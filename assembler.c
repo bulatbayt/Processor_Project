@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define SIZE_BUF 256
+
 int ReadCommand (char* file_name);
 int ExecuteCommand (const char* line, FILE* command_write);
 
@@ -24,28 +26,37 @@ int ReadCommand (char* file_name)
         return 1;
     }
     
-    char* comand_buffer = calloc (32, sizeof(char));
+    char* comand_buffer = calloc (SIZE_BUF, sizeof(char));
     
     FILE* command_write = fopen ("Processor_write.asm", "w");
 
-    while (fgets (comand_buffer, 32-1, command_read) != NULL)
+    while (fgets (comand_buffer, SIZE_BUF-1, command_read) != NULL)
     {
         int result = ExecuteCommand(comand_buffer, command_write);
 
         if (result == -1)
         {
-            printf ("Error with Assembler");
+            printf ("Error with Assembler\n");
             break;
+        }
+
+        if (result == -2)
+        {
+            printf ("The program completed successfully.\n");
         }
     }
 
+    free (comand_buffer);
+
     fclose (command_write);
     fclose (command_read);
+
+    return 0;
 }
 
 int ExecuteCommand (const char* line, FILE* command_write)
 {
-    char command_name[32] = {};
+    char command_name[SIZE_BUF] = {};
     double value = 0;
 
 
@@ -59,7 +70,7 @@ int ExecuteCommand (const char* line, FILE* command_write)
     }
 
     
-    if (sscanf (line, "%31s", command_name) == 1)
+    if (sscanf (line, "%31s", command_name) == 1) // проблема, если после Push будет стоять еще что то
     {
         if (strcmp (command_name, "ADD") == 0) 
         { 
@@ -84,12 +95,12 @@ int ExecuteCommand (const char* line, FILE* command_write)
         if (strcmp (command_name, "HLT") == 0) 
         { 
             fprintf (command_write, "%d\n", 0);
-            return 0; 
+            return -2; 
         }  
 
         printf ("Unknown command: %s\n", command_name);
         return -1;
     }
 
-    return 1;   
+    return 0;   
 }
