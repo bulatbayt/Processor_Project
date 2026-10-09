@@ -1,84 +1,94 @@
 #include "stack_v3.h"
-#include <string.h>
 
 /*todo
-поменять привязку к double
+поменять привязку к double -- achieved
+сделать Dump в дебаг
+arc, argv для перенаправления ввода вывода
 */
 
 #define SIZE_BUF 256
+
+int realise_comand (struct stack_t* stk, int* err);
 
 void Add (struct stack_t* stk, int* err);
 void Sub (struct stack_t* stk, int* err);
 void Div (struct stack_t* stk, int* err);
 void Out (struct stack_t* stk, int* err);
 
-//int ExecuteCommand (struct stack_t* stk, const char* line, int* err);
 
-
-
-int main ()
+int main () // ARGC ARGV
 {
     struct stack_t stk1 = {};
     int err = 0;
 
     STACK_INIT (&stk1, 2, &err);
 
-    FILE* fp = fopen ("processor_write.asm", "r"); // новую функцию
+    STACK_DUMP (&stk1, err);
+
+    realise_comand (&stk1, &err); // обрабатывать return
+
+    return 0;
+}
+
+// ============================================================
+// Реализация команд
+// ============================================================
+
+int realise_comand (struct stack_t* stk, int* err) 
+{
+    FILE* fp = fopen ("Processor_write.asm", "r"); 
     if (fp == NULL)
     {
-        printf ("Cannot open code.asm\n");
+        printf ("Cannot open code.asm\n"); 
         return 1;
     }
 
     char* command_string = calloc (SIZE_BUF, sizeof(char));
     int command_code = 0;
-     
 
-    while (fgets (command_string, SIZE_BUF-1, fp) != NULL) // новая функция 
+
+    while (fgets (command_string, SIZE_BUF-1, fp) != NULL) 
     {
-        double value = 0; //привязка к double
+        stack_elem_t value = 0; //привязка к double
 
-        sscanf (command_string, "%d %lg",&command_code, &value);
-
-        //printf ("Command code :%d\n", command_code);
+        sscanf (command_string, "%d "STACK_ELEM,&command_code, &value);
 
         switch (command_code)
         {
             case 1:
             {   
-                //printf ("Value : %lg\n", value);
-                StackPush (&stk1, value, &err);
+                StackPush (stk, value, err);
                 break;
             }
 
             case 2:
             {
-                Add (&stk1, &err);
+                Add (stk, err);
                 break;
             }
 
             case 3:
             {
-                Sub (&stk1, &err);
+                Sub (stk, err);
                 break;
             }
 
             case 4:
             {
-                Div (&stk1, &err);
+                Div (stk, err);
                 break;
             }
 
             case 5:
             {
-                Out (&stk1, &err);
+                Out (stk, err);
                 break;
             }
 
 
             case 0:
             {
-                StackDestroy (&stk1);
+                StackDestroy (stk);
                 fclose(fp);
                 free(command_string);
                 return 0;
@@ -93,28 +103,11 @@ int main ()
         }
     }
 
-    /*while (fgets (line, sizeof (line), fp) != NULL)
-    {
-        int result = ExecuteCommand (&stk1, line, &err);
 
-        if (result == 0) 
-        break;   // HLT
-
-        if (err != STACK_OK)
-        {
-            printf ("Runtime error: %d\n", err);
-            STACK_DUMP (&stk1, err);
-            break;
-        }
-    }*/
 
     free (command_string);
     fclose (fp);
 
-    //printf ("\nStack:\n");
-    //STACK_DUMP (&stk1, err);
-
-    return 0;
 }
 
 // ============================================================
@@ -125,23 +118,23 @@ void Add (struct stack_t* stk, int* err)
     assert (stk != NULL);
     assert (err != NULL);
 
-    double Val2 = StackPop (stk, err);
+    stack_elem_t Val2 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("ADD: not enough operands\n"); 
         return; 
     }
 
-    double Val1 = StackPop (stk, err);
+    stack_elem_t Val1 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("ADD: not enough operands\n"); 
         return; 
     }
 
-    double sum = Val1 + Val2;
+    stack_elem_t sum = Val1 + Val2;
 
-    printf ("sum <%lg>\n", sum);
+    printf ("sum <"STACK_ELEM">\n", sum);
     StackPush (stk, sum, err);
 
     *err = STACK_OK;
@@ -152,21 +145,21 @@ void Sub (struct stack_t* stk, int* err)
     assert (stk != NULL);
     assert (err != NULL);
 
-    double Val2 = StackPop (stk, err);
+    stack_elem_t Val2 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("SUB: not enough operands\n"); return; 
     }
 
-    double Val1 = StackPop (stk, err);
+    stack_elem_t Val1 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("SUB: not enough operands\n"); return; 
     }
 
-    double difference = Val1 - Val2;
+    stack_elem_t difference = Val1 - Val2;
 
-    printf ("difference <%lg>\n", difference);
+    printf ("difference <"STACK_ELEM">\n", difference);
     StackPush (stk, difference, err);
 
     *err = STACK_OK;
@@ -177,30 +170,30 @@ void Div (struct stack_t* stk, int* err)
     assert (stk != NULL);
     assert (err != NULL);
 
-    double Val2 = StackPop (stk, err);
+    stack_elem_t Val2 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("DIV: not enough operands\n"); 
         return; 
     }
 
-    double Val1 = StackPop (stk, err);
+    stack_elem_t Val1 = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("DIV: not enough operands\n"); 
         return; 
     }
 
-    if (Val2 == 0.0)
+    if (Val2 == 0)
     {
         printf ("DIV: division by zero\n");
         *err = STACK_OK;
         return;
     }
 
-    double quotient = Val1 / Val2;
+    stack_elem_t quotient = Val1 / Val2;
 
-    printf ("quotient <%lg>\n", quotient);
+    printf ("quotient <"STACK_ELEM">\n", quotient);
     StackPush (stk, quotient, err);
 
     *err = STACK_OK;
@@ -208,13 +201,13 @@ void Div (struct stack_t* stk, int* err)
 
 void Out (struct stack_t* stk, int* err)
 {
-    double v = StackPop (stk, err);
+    stack_elem_t v = StackPop (stk, err);
     if (*err != STACK_OK) 
     { 
         printf ("OUT: stack is empty\n"); 
         return; 
     }
 
-    printf ("Out value: %lg\n", v);
+    printf ("Out value: "STACK_ELEM"\n", v);
     *err = STACK_OK;
 }
