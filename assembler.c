@@ -42,7 +42,7 @@ int ReadCommand (char* file_name)
 
         if (result == -2)
         {
-            printf ("The program completed successfully.\n");
+            printf ("The programm completed successfully.\n");
         }
     }
 
@@ -70,7 +70,7 @@ int ExecuteCommand (const char* line, FILE* command_write)
     }
 
     
-    if (sscanf (line, "%31s", command_name) == 1) // проблема, если после Push будет стоять еще что то
+    if (sscanf (line, "%31s", command_name) == 1) // проблема, если после Push будет стоять еще что то, то скипнеться
     {
         if (strcmp (command_name, "ADD") == 0) 
         { 
