@@ -5,6 +5,8 @@
 поменять привязку к double
 */
 
+#define SIZE_BUF 256
+
 void Add (struct stack_t* stk, int* err);
 void Sub (struct stack_t* stk, int* err);
 void Div (struct stack_t* stk, int* err);
@@ -28,23 +30,22 @@ int main ()
         return 1;
     }
 
-    char* command_string = calloc (32, sizeof(char));
+    char* command_string = calloc (SIZE_BUF, sizeof(char));
     int command_code = 0;
      
 
-    while (fgets (command_string, 32-1, fp) != NULL) // новая функция 
+    while (fgets (command_string, SIZE_BUF-1, fp) != NULL) // новая функция 
     {
-        sscanf (command_string, "%d", &command_code);
-     
         double value = 0; //привязка к double
+
+        sscanf (command_string, "%d %lg",&command_code, &value);
 
         //printf ("Command code :%d\n", command_code);
 
         switch (command_code)
         {
             case 1:
-            {
-                sscanf (command_string, "%d %lg",&command_code, &value);
+            {   
                 //printf ("Value : %lg\n", value);
                 StackPush (&stk1, value, &err);
                 break;
@@ -70,7 +71,7 @@ int main ()
 
             case 5:
             {
-                printf ("Results: %lg\n", StackPop(&stk1, &err));
+                Out (&stk1, &err);
                 break;
             }
 
@@ -78,6 +79,9 @@ int main ()
             case 0:
             {
                 StackDestroy (&stk1);
+                fclose(fp);
+                free(command_string);
+                return 0;
                 break;
             }
 
@@ -104,6 +108,7 @@ int main ()
         }
     }*/
 
+    free (command_string);
     fclose (fp);
 
     //printf ("\nStack:\n");
