@@ -1,3 +1,6 @@
+#ifndef STACK_V3_H
+#define STACK_V3_H
+
 typedef double stack_elem_t;
 #define STACK_ELEM   "%lg"
 
@@ -6,14 +9,11 @@ typedef double stack_elem_t;
 #include <assert.h>
 #include <math.h>
 #include <stdarg.h>
-#include <stddef.h>   // size_t
+#include <stddef.h>
 
 #define STACK_POISON     (NAN)
 #define CANARY_VALUE     (1e308)
 
-// ============================================================
-// Режим отладки
-// ============================================================
 #ifdef ONDEBUG
     #define ON_DBG(...) __VA_ARGS__
 #else
@@ -32,30 +32,34 @@ enum StackError
     STACK_LEFT_CANARY   = 1 << 5,
     STACK_RIGHT_CANARY  = 1 << 6,
     STACK_DATA_NULL     = 1 << 8,
+    //===================================================================//
+
 };
 
-// ============================================================
-// Структура стека
-// ============================================================
+enum ProcessorError
+{
+    PRC_NULL = 1 << 9,
+    PRC_CODE_NULL = 1 << 10,
+    PRC_BAD_IP = 1 << 11,
+};
+
+
 struct stack_t
 {
 #ifdef ONDEBUG
-    const char* name;   //  имя стека
+    const char* name;
     const char* file;
     int         line;
-    const char* func;   //  функция создания
+    const char* func;
 #endif
 
-    stack_elem_t* data;        // сырой буфер: [канарейка][данные][канарейка]
-    stack_elem_t* info_data;   // данные (указатель в середину data)
+    stack_elem_t* data;
+    stack_elem_t* info_data;
     size_t        size;
     size_t        capacity;
-    stack_elem_t* pointer;
 };
 
-// ============================================================
-// Прототипчики
-// ============================================================
+
 int          StackVerify    (struct stack_t* stk);
 
 void         StackDump       (struct stack_t* stk, int err ON_DBG(, const char* file, int line, const char* func));
@@ -69,14 +73,10 @@ stack_elem_t StackPop        (struct stack_t* stk, int* err);
 void         StackDestroy    (struct stack_t* stk);
 
 void         PrintfErr       (int err, struct stack_t* stk);
-
-void         PrintfStackElem ( struct stack_t* stk);
-
+void         PrintfStackElem (struct stack_t* stk);
 void         PrintfCanary    (struct stack_t* stk);
 
-// ============================================================
-// обёрточки
-// ============================================================
+
 #ifdef ONDEBUG
 
     #define STACK_INIT(stk, capacity, err)                          \
@@ -91,4 +91,6 @@ void         PrintfCanary    (struct stack_t* stk);
         StackInit((stk), (capacity), (err))
     #define STACK_DUMP(stk, err)                                    \
         StackDump((stk), (err))
+#endif
+
 #endif
