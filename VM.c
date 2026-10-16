@@ -1,21 +1,21 @@
 #include "stack_v3.h"
 #include <sys/stat.h>
- 
+#include "color.h" 
+
 /*todo
-поменять привязку к double -- achieved
-сделать Dump в дебаг -- achieved
+поменять привязку к double -------------------------------------------------------- achieved
+сделать Dump в дебаг -------------------------------------------------------------- achieved
 arc, argv для перенаправления ввода вывода
 
+fread, fwrite -- бинарный тип , переход
 
+новый стэк для call и рет
 
 таблица меток, глобальная переменная чтоли?
 
+!!!!!!!!!! забыл крышечку -----------------------------------------------------------achieved
 
-if (*err != STACK_OK) ---- под эту штуку можно сделать функцию, по типу ассерта
-{
-    printf ("POP: stack is empty\n");
-    return -1;
-} 
+
 */
 
 #define SIZE_BUF        256
@@ -26,6 +26,7 @@ struct File_info
 {
     int           max_rows;
     int long long size_file;
+    
 };
 
 enum Opcode
@@ -41,12 +42,13 @@ enum Opcode
     OP_MUL      = 8,
     OP_JA       = 9,
     OP_PUSHr = 10,
-
+    OP_CALL = 11,
+    OP_RET = 12,
 };
 
 struct processor_info
 {
-    stack_elem_t registers[REG_COUNT]; // Ax Bx Cx CallX
+    stack_elem_t registers[REG_COUNT]; // Ax Bx Cx CallX ---- как 
     size_t       ip;                    
     size_t       code_size;
     int          labels[LABEL_MAX];  
@@ -58,8 +60,13 @@ int ReadFromFile     (const char* read_file, char* index[], char** buffer, struc
 int realise_comand   (struct stack_t* stk, int* err, char* index[], int max_rows,
                       struct processor_info* prc1);
 
-int ProcessorVerify  (struct processor_info* prc1);
-void Pump            (struct processor_info* prc1);
+int ProcessorVerify  (struct processor_info* prc1, struct stack_t* stk, int* err);
+void CPU_Dump            (struct processor_info* prc1, FILE* write_CDump);
+
+
+//=====================================================================================================================//
+//=============================================Прототипы операций======================================================//
+//=====================================================================================================================//
 
 void Add  (struct stack_t* stk, int* err);
 void Sub  (struct stack_t* stk, int* err);
@@ -68,9 +75,11 @@ void Mult (struct stack_t* stk, int* err);
 void Out  (struct stack_t* stk, int* err);
 int  Jump (struct processor_info* prc1, int* err);
 int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err);
-
+int Call (struct stack_t* stk,struct processor_info* prc1, int* err);
+int Ret (struct stack_t* stk,struct processor_info* prc1, int* err);
 void Hlt (struct processor_info* prc1 , int* err);
 
+//=====================================================================================================================//
 
 int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 {
@@ -78,13 +87,16 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
     struct File_info Command_info = {};
     struct processor_info prc1 = {};
 
+
     char* index[123]; // мб в структуру какую нибудь запихнуть
     char* buffer;
 
-    for (int i = 0; i < LABEL_MAX; i++)
+    for (int i = 0; i < LABEL_MAX; i++) // в функцию
+    {
         prc1.labels[i] = -1;
+    }
 
-    int err = 0;
+    int err = 0; // переменную в стэк
 
     STACK_INIT (&stk1, 2, &err);
 
@@ -94,9 +106,9 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
     realise_comand (&stk1, &err, index, max_rows, &prc1);
 
-    printf ("\n\n ============================================================\n\n");
-    Pump (&prc1);
-    printf ("\n\n ============================================================\n\n");
+    //printf ("\n\n ============================================================\n\n");
+    //CPU_Dump (&prc1);
+    //printf ("\n\n ============================================================\n\n");
 
     STACK_DUMP (&stk1, err);
 
@@ -113,11 +125,9 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
 int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, struct processor_info* prc1)
 {
-    prc1->code_size = 0;
-
     for (int i = 0; i < max_rows; i++)
     {
-        int    opcode = 0; // лишние переменные
+        int    opcode = 0;
         double value  = 0;
 
         if (sscanf (index[i], "%d %lf", &opcode, &value) == 2)
@@ -128,24 +138,30 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
         else if (sscanf (index[i], "%d", &opcode) == 1)
         {
             prc1->code[prc1->code_size++] = (stack_elem_t)opcode;
-        }
-        
+        }       
     }
 
 
-    int verify = ProcessorVerify (prc1);
+    int verify = ProcessorVerify (prc1, stk, err);
     if (verify != 0)
     {
-        printf ("Processor verification failed: %d\n", verify);
+        PrintfErr (*err, stk);
         return -1;
     }
 
     //prc1->ip = 0;
 
+    FILE* write_CDump = fopen ("Cpu_Dump.txt", "w");
+    if (write_CDump == NULL)
+    {
+        printf ("Error with open file");
+        return -1;
+    }
+
     while (prc1->ip < prc1->code_size) // новую функцию???????????????
     {
         int command_code = (int)prc1->code[prc1->ip];
-
+        CPU_Dump (prc1, write_CDump);
         switch (command_code)
         {
             case OP_PUSH:
@@ -217,15 +233,17 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
             {
                 if (Jump (prc1, err) == -1)
                 {
+                    fclose (write_CDump);
                     return -1;
                 }
                 break;
             }
 
-            case OP_JA: // !!!!!!!!!!!!!!!! функцию
+            case OP_JA: // !!!!!!!!!!!!!!!! функцию -- achieved
             {
                 if ( Jump_Above(stk, prc1, err) == -1)
                 {
+                    fclose (write_CDump);
                     return -1;
                 }
                 break;
@@ -235,12 +253,14 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
             {
                 prc1->ip++;
                 Hlt (prc1, err);
+                fclose (write_CDump);
                 return 0;
             }
 
             default:
             {
                 printf ("Uncnown command\n");
+                fclose (write_CDump);
                 return -1;
             }
         }
@@ -248,32 +268,48 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
         if (*err != STACK_OK)
         {
             printf ("Runtime error: %d at IP=%zu\n", *err, prc1->ip);
+            fclose (write_CDump);
             return -1;
         }
     }
 
+    fclose (write_CDump);
+
     return 0;
 }
 
 
-int ProcessorVerify (struct processor_info* prc1) //!!!!!!!!!!!!!!!!!!!! Почему он не вызывает верификатор стэка it musts, короче оптимизируем с verivicatorom stacka -- это не годится
+int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) //!!!!!!!!!!!!!!!!!!!! Почему он не вызывает верификатор стэка it musts, короче оптимизируем с verivicatorom stacka -- это не годится ---- achieved
 {
-    if (prc1 == NULL)                 return -1;
-    if (prc1->code == NULL)           return -2;
-    if (prc1->ip > prc1->code_size)   return -3;
+    *err = StackVerify (stk1);
+    if (prc1 == NULL) 
+        *err |= PRC_NULL;                
+    if (prc1->code == NULL)    
+        *err |= PRC_CODE_NULL;
+    if (prc1->ip > prc1->code_size) 
+        *err |= PRC_BAD_IP;
 
     
+    if (*err != STACK_OK)              
+        return 1;
 
     return 0;
 }
 
 
-void Pump (struct processor_info* prc1) // печатаем код и метки
+void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) // печатаем код и метки
 {
-    printf ("\n----- CODE -----\n");
+    #ifdef ONDEBUG
+    fprintf (write_CDump, "\n----- CODE -----\n");
     for (size_t i = 0; i < prc1->code_size; i++)
     {
-        printf ("  [%zu] " STACK_ELEM "\n", i, prc1->code[i]);
+        fprintf (write_CDump, "  [%zu] " STACK_ELEM , i, prc1->code[i]);
+        
+        if (prc1->ip == i)
+        {
+            fprintf (write_CDump, "    [<---------");
+        } 
+        fprintf (write_CDump, "\n");
     }
 
     /*printf ("\n----- LABELS -----\n"); // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! починить
@@ -282,6 +318,7 @@ void Pump (struct processor_info* prc1) // печатаем код и метки
         if (prc1->labels[i] != -1)
             printf ("  :%d -> %d\n", i, prc1->labels[i]);
     }*/
+    #endif
 }
 
 
@@ -435,6 +472,7 @@ int  Jump (struct processor_info* prc1, int* err)
     return 0;
 }
 
+
 int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err)
 {
     int target = (int)prc1->code[prc1->ip + 1];
@@ -463,6 +501,7 @@ int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err)
     return 0;
 }
 
+
 int Call (struct stack_t* stk,struct processor_info* prc1, int* err)
 {
     int target = (int)prc1->code[prc1->ip + 1];
@@ -472,17 +511,17 @@ int Call (struct stack_t* stk,struct processor_info* prc1, int* err)
         printf ("JMP fail: bad address %d\n", target);
         return -1;
     }
-    prc1->registers[4] = (int)prc1->code[prc1->ip];
+    prc1->registers[4] = (stack_elem_t)(prc1->ip + 2);   // сделать стэк для возврата!
     prc1->ip = (size_t)target;
-
     return 0;
-
 }
+
 
 int Ret (struct stack_t* stk,struct processor_info* prc1, int* err)
 {
-
-    return 1;
+    prc1->ip = prc1->registers[4];
+    prc1->registers[4] = 0; 
+    return 0;
 }
 
 
