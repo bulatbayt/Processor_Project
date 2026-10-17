@@ -22,11 +22,14 @@ fread, fwrite -- бинарный тип , переход
 #define LABEL_MAX       4
 #define REG_COUNT       6
 
-struct File_info
+struct Processor_Command
 {
     int           max_rows;
     int long long size_file;
-    
+    char* index[123];       // в константу
+    char* buffer;
+    int    opcode;
+    double value;
 };
 
 enum Opcode
@@ -53,16 +56,18 @@ struct processor_info
     size_t       code_size;
     int          labels[LABEL_MAX];  
     size_t       labels_amount;
+    int err;
     stack_elem_t code[1000]; // в константу или динамика
 };
 
-int ReadFromFile     (const char* read_file, char* index[], char** buffer, struct File_info* Command);
-int realise_comand   (struct stack_t* stk, int* err, char* index[], int max_rows,
+int ReadFromFile     (const char* read_file, struct Processor_Command* Command);
+int realise_comand   (struct stack_t* stk, struct Processor_Command Command,
                       struct processor_info* prc1);
 
 int ProcessorVerify  (struct processor_info* prc1, struct stack_t* stk, int* err);
 void CPU_Dump            (struct processor_info* prc1, FILE* write_CDump);
-
+void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc1);
+int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk);
 
 //=====================================================================================================================//
 //=============================================Прототипы операций======================================================//
@@ -74,9 +79,9 @@ void Div  (struct stack_t* stk, int* err);
 void Mult (struct stack_t* stk, int* err);
 void Out  (struct stack_t* stk, int* err);
 int  Jump (struct processor_info* prc1, int* err);
-int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err);
-int Call (struct stack_t* stk,struct processor_info* prc1, int* err);
-int Ret (struct stack_t* stk,struct processor_info* prc1, int* err);
+int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err);
+int Call (struct stack_t* stk, struct processor_info* prc1, int* err);
+int Ret (struct stack_t* stk, struct processor_info* prc1, int* err);
 void Hlt (struct processor_info* prc1 , int* err);
 
 //=====================================================================================================================//
@@ -84,37 +89,33 @@ void Hlt (struct processor_info* prc1 , int* err);
 int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 {
     struct stack_t stk1 = {};
-    struct File_info Command_info = {};
+    struct Processor_Command Command_info = {};
     struct processor_info prc1 = {};
 
-
-    char* index[123]; // мб в структуру какую нибудь запихнуть
-    char* buffer;
-
-    for (int i = 0; i < LABEL_MAX; i++) // в функцию
+    for (int i = 0; i < LABEL_MAX; i++) 
     {
         prc1.labels[i] = -1;
     }
 
-    int err = 0; // переменную в стэк
+    //int err = 0; // переменную в стэк
 
-    STACK_INIT (&stk1, 2, &err);
+    STACK_INIT (&stk1, 2, &prc1.err);// Передавать только структуры в параметры
 
-    STACK_DUMP (&stk1, err);
+    STACK_DUMP (&stk1, prc1.err);
 
-    int max_rows = ReadFromFile ("Processor_write.asm", index, &buffer, &Command_info);
+    ReadFromFile ("Processor_write.asm", &Command_info);
 
-    realise_comand (&stk1, &err, index, max_rows, &prc1);
+    realise_comand (&stk1, Command_info, &prc1);
 
     //printf ("\n\n ============================================================\n\n");
     //CPU_Dump (&prc1);
     //printf ("\n\n ============================================================\n\n");
 
-    STACK_DUMP (&stk1, err);
+    STACK_DUMP (&stk1, prc1.err);
 
     StackDestroy (&stk1);
 
-    free (buffer);
+    free (Command_info.buffer);
 
     return 0;
 }
@@ -123,33 +124,17 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 // Реализация команд
 // ============================================================
 
-int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, struct processor_info* prc1)
+int realise_comand (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
 {
-    for (int i = 0; i < max_rows; i++)
-    {
-        int    opcode = 0;
-        double value  = 0;
+    
+    Parse_Comand (&Command, prc1);
 
-        if (sscanf (index[i], "%d %lf", &opcode, &value) == 2)
-        {
-            prc1->code[prc1->code_size++] = (stack_elem_t)opcode;
-            prc1->code[prc1->code_size++] = (stack_elem_t)value;
-        }
-        else if (sscanf (index[i], "%d", &opcode) == 1)
-        {
-            prc1->code[prc1->code_size++] = (stack_elem_t)opcode;
-        }       
-    }
-
-
-    int verify = ProcessorVerify (prc1, stk, err);
+    int verify = ProcessorVerify (prc1, stk, &prc1->err);
     if (verify != 0)
     {
-        PrintfErr (*err, stk);
+        PrintfErr (prc1->err, stk);
         return -1;
     }
-
-    //prc1->ip = 0;
 
     FILE* write_CDump = fopen ("Cpu_Dump.txt", "w");
     if (write_CDump == NULL)
@@ -158,7 +143,61 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
         return -1;
     }
 
-    while (prc1->ip < prc1->code_size) // новую функцию???????????????
+    if ( Start_Commands (prc1, write_CDump, &prc1->err, stk) != 0)
+    {
+        printf ("Error witg realise command, reviev the errors\n");
+        return -1;
+    }
+
+    fclose (write_CDump);
+
+    return 0;
+}
+
+int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) //!!!!!!!!!!!!!!!!!!!! Почему он не вызывает верификатор стэка it musts, короче оптимизируем с verivicatorom stacka -- это не годится ---- achieved
+{
+    *err = StackVerify (stk1);
+    if (prc1 == NULL) 
+        *err |= PRC_NULL;                
+    if (prc1->code == NULL)    
+        *err |= PRC_CODE_NULL;
+    if (prc1->ip > prc1->code_size) 
+        *err |= PRC_BAD_IP;
+
+    
+    if (*err != STACK_OK)              
+        return 1;
+
+    return 0;
+}
+
+void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) // печатаем код и метки
+{
+    #ifdef ONDEBUG
+    fprintf (write_CDump, "\n----- CODE -----\n");
+    for (size_t i = 0; i < prc1->code_size; i++)
+    {
+        fprintf (write_CDump, "  [%zu] " STACK_ELEM , i, prc1->code[i]);
+        
+        if (prc1->ip == i)
+        {
+            fprintf (write_CDump, "    [<---------");
+        } 
+        fprintf (write_CDump, "\n");
+    }
+
+    /*printf ("\n----- LABELS -----\n"); // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! починить
+    for (int i = 0; i < LABEL_MAX; i++)
+    {
+        if (prc1->labels[i] != -1)
+            printf ("  :%d -> %d\n", i, prc1->labels[i]);
+    }*/
+    #endif
+}
+
+int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk) 
+{
+    while (prc1->ip < prc1->code_size) 
     {
         int command_code = (int)prc1->code[prc1->ip];
         CPU_Dump (prc1, write_CDump);
@@ -272,56 +311,74 @@ int realise_comand (struct stack_t* stk, int* err, char* index[], int max_rows, 
             return -1;
         }
     }
-
-    fclose (write_CDump);
-
     return 0;
 }
 
-
-int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) //!!!!!!!!!!!!!!!!!!!! Почему он не вызывает верификатор стэка it musts, короче оптимизируем с verivicatorom stacka -- это не годится ---- achieved
+int ReadFromFile (const char* read_file, struct Processor_Command* Command)
 {
-    *err = StackVerify (stk1);
-    if (prc1 == NULL) 
-        *err |= PRC_NULL;                
-    if (prc1->code == NULL)    
-        *err |= PRC_CODE_NULL;
-    if (prc1->ip > prc1->code_size) 
-        *err |= PRC_BAD_IP;
+    assert (read_file != NULL);
+    assert (Command->index != NULL);
 
-    
-    if (*err != STACK_OK)              
-        return 1;
+    FILE* Command_file = fopen (read_file, "rb");
 
-    return 0;
-}
-
-
-void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) // печатаем код и метки
-{
-    #ifdef ONDEBUG
-    fprintf (write_CDump, "\n----- CODE -----\n");
-    for (size_t i = 0; i < prc1->code_size; i++)
+    if (Command_file == NULL)
     {
-        fprintf (write_CDump, "  [%zu] " STACK_ELEM , i, prc1->code[i]);
-        
-        if (prc1->ip == i)
-        {
-            fprintf (write_CDump, "    [<---------");
-        } 
-        fprintf (write_CDump, "\n");
+        perror ("fopen");
+        return -1;
     }
 
-    /*printf ("\n----- LABELS -----\n"); // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! починить
-    for (int i = 0; i < LABEL_MAX; i++)
+    int file_dis = fileno (Command_file);
+
+    struct stat stat_file;
+
+    fstat (file_dis, &stat_file);
+
+    Command->size_file = stat_file.st_size;
+
+    Command->buffer = calloc (Command->size_file + 1, sizeof (char));
+    if (Command->buffer == NULL)
     {
-        if (prc1->labels[i] != -1)
-            printf ("  :%d -> %d\n", i, prc1->labels[i]);
-    }*/
-    #endif
+        fclose (Command_file);
+        return -1;
+    }
+
+    fread (Command->buffer, sizeof (char), Command->size_file, Command_file);
+    (Command->buffer)[Command->size_file] = '\0';
+
+    Command->index [0] = Command->buffer;
+
+    for (int i = 0; i < Command->size_file; i ++)
+    {
+        if ( *(Command->buffer + i) == '\n')
+        {
+            *(Command->buffer + i) = '\0';
+            Command->max_rows ++;
+            Command->index [ Command->max_rows] =  Command->buffer + i + 1;
+        }
+    }
+
+    fclose (Command_file);
+
+    return 0;
 }
 
+void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc1)
+{
+    for (int i = 0; i < Command->max_rows; i++)
+    {
+        
 
+        if (sscanf (Command->index[i], "%d %lf", &Command->opcode, &Command->value) == 2)
+        {
+            prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
+            prc1->code[prc1->code_size++] = (stack_elem_t)Command->value;
+        }
+        else if (sscanf (Command->index[i], "%d", &Command->opcode) == 1)
+        {
+            prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
+        }       
+    }
+}
 
 // ============================================================
 // Команды
@@ -472,8 +529,7 @@ int  Jump (struct processor_info* prc1, int* err)
     return 0;
 }
 
-
-int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err)
+int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err)
 {
     int target = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
@@ -501,8 +557,7 @@ int Jump_Above (struct stack_t* stk,struct processor_info* prc1, int* err)
     return 0;
 }
 
-
-int Call (struct stack_t* stk,struct processor_info* prc1, int* err)
+int Call (struct stack_t* stk, struct processor_info* prc1, int* err)
 {
     int target = (int)prc1->code[prc1->ip + 1];
     
@@ -516,14 +571,12 @@ int Call (struct stack_t* stk,struct processor_info* prc1, int* err)
     return 0;
 }
 
-
-int Ret (struct stack_t* stk,struct processor_info* prc1, int* err)
+int Ret (struct stack_t* stk, struct processor_info* prc1, int* err)
 {
     prc1->ip = prc1->registers[4];
     prc1->registers[4] = 0; 
     return 0;
 }
-
 
 void Hlt (struct processor_info* prc1, int* err)
 {
@@ -534,52 +587,4 @@ void Hlt (struct processor_info* prc1, int* err)
 }
 
 
-int ReadFromFile (const char* read_file, char* index[], char** buffer, struct File_info* Command)
-{
-    assert (read_file != NULL);
-    assert (index != NULL);
 
-    FILE* Command_file = fopen (read_file, "rb");
-
-    if (Command_file == NULL)
-    {
-        perror ("fopen");
-        return 0;
-    }
-
-    int file_dis = fileno (Command_file);
-
-    struct stat stat_file;
-
-    fstat (file_dis, &stat_file);
-
-    Command->size_file = stat_file.st_size;
-
-    *buffer = calloc (Command->size_file + 1, sizeof (char));
-    if (*buffer == NULL)
-    {
-        fclose (Command_file);
-        return 0;
-    }
-
-    fread (*buffer, sizeof (char), Command->size_file, Command_file);
-    (*buffer)[Command->size_file] = '\0';
-
-    int max_rows = 0;
-
-    index [0] = *buffer;
-
-    for (int i = 0; i < Command->size_file; i ++)
-    {
-        if ( *(*buffer + i) == '\n')
-        {
-            *(*buffer + i) = '\0';
-            max_rows ++;
-            index [ max_rows] =  *buffer + i + 1;
-        }
-    }
-
-    fclose (Command_file);
-
-    return max_rows;
-}
