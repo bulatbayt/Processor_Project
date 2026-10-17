@@ -6,7 +6,7 @@
 #define LABEL_MAX   4
 
 /* todo 
-хэш инструкции ( сравнивать с цифрами ), делить на функции?
+хэш инструкции ( сравнивать с цифрами ), делить на функции? ---- achieved
 сделать ret and call
 навести чистоту как в VM.c, делить функции
 */
@@ -27,18 +27,44 @@ enum Opcode
     OP_RET      = 12,
 };
 
+struct Command
+{
+    char* name;;
+    int   opcode;
+};
+
 struct LabelTable
 {
     int labels[LABEL_MAX]; 
 };
 
 //============================================================================
+//===========================Хэширование======================================
+//============================================================================
+struct Command commands[] =
+{
+    { "HLT",   OP_HLT },
+    { "PUSH",  OP_PUSH },
+    { "ADD",   OP_ADD },
+    { "SUB",   OP_SUB },
+    { "DIV",   OP_DIV },
+    { "OUT",   OP_OUT },
+    { "POP",   OP_POP },
+    { "JMP",   OP_JMP },
+    { "MUL",   OP_MUL },
+    { "JA",    OP_JA },
+    { "PUSHr", OP_PUSHr },
+    { "CALL",  OP_CALL },
+    { "RET",   OP_RET },
+};
+
+//============================================================================
 //===========================Ассемблирование==================================
 //============================================================================
-int  ReadCommand    (char* file_read, char* file_write);
-
-int FirstAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
-int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
+int  ReadCommand       (char* file_read, char* file_write);
+ 
+int  FirstAssembling   (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
+int  SecondAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
 
 int  Translate_Command (const char* line, FILE* command_write,
                      struct LabelTable* labels, int pass, size_t* ip);
@@ -46,15 +72,33 @@ int  Translate_Command (const char* line, FILE* command_write,
 //============================================================================
 //===========================Вспомогательные функции==========================
 //============================================================================
+int Find_Command    (char* command_name);
 int  ParseRegister  (const char* s);
 void LabelInit      (struct LabelTable* t);
 void LabelAdd       (struct LabelTable* t, int label_number, size_t ip);
 int  LabelFind      (struct LabelTable* t, int label_number);
+int marker          (const char* line, struct LabelTable* labels, size_t* ip);
 
+//============================================================================
+//===========================Командные функции================================
+//============================================================================
+void Hlt       (FILE* command_write, size_t* ip);
+void Push      (FILE* command_write, size_t* ip, char argument[]);
+void Add       (FILE* command_write, size_t* ip);
+void Sub       (FILE* command_write, size_t* ip);
+void Div       (FILE* command_write, size_t* ip);
+void Out       (FILE* command_write, size_t* ip);
+int  Pop       (FILE* command_write, size_t* ip, char argument[]);
+void Jmp       (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
+void Mul       (FILE* command_write, size_t* ip);
+void Ja        (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
+int Pushr      (FILE* command_write, size_t* ip, char argument[]);
+void Call      (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
 
 
 int main (int argc, char* argv[]) // юзать аргс аргв
 {
+    
     ReadCommand ("code.asm", "Processor_write.asm");
     return 0;
 }
@@ -69,21 +113,14 @@ int ReadCommand (char* file_read, char* file_write)
     LabelInit (&labels);
     char** command_buffer;
 
-    // =============================================================================
-    // первый пошел
-    // =============================================================================
-    
-    if ( FirstAssembling (file_read,file_write, &labels, command_buffer) != 0)
+
+    if ( FirstAssembling (file_read,file_write, &labels, command_buffer) != 0) 
     {
         printf ("Review the errors\n");
         return 1;
     }
     
-    // =============================================================================
-    // второй пошел
-    // =============================================================================
-    
-    if ( SecondAssembling (file_read,file_write, &labels, command_buffer) != 0)
+    if ( SecondAssembling (file_read,file_write, &labels, command_buffer) != 0) 
     {
         printf ("Review the errors\n");
         return 1;
@@ -118,8 +155,9 @@ int FirstAssembling (char* file_read, char* file_write, struct LabelTable* label
 
     size_t ip = 0;
 
-    while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) // здесь сделать хэши
+    while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) // здесь сделать хэши   -----achieved
     {
+        //printf ("IP %zu\n", ip);
         int result = Translate_Command (*command_buffer, command_write,
                                      labels, 1, &ip);
 
@@ -187,124 +225,122 @@ int Translate_Command (const char* line, FILE* command_write,
     char command_name[SIZE_BUF] = {};
     char argument[SIZE_BUF] = {};
 
-    if (line[0] == ':')
+    if ( marker (line, labels, ip) == 1)
     {
-        int label_number = atoi (line + 1);
-
-        if (label_number >= 0 && label_number < LABEL_MAX)
-            labels->labels[label_number] = (int)(*ip);
-
         return 1;
-    }
+    }    
 
-    
-    if (sscanf (line, "%31s %31s", command_name, argument) == 2)
+    sscanf (line, "%31s %31s", command_name, argument);
+
+    int op = Find_Command (command_name); 
+
+    if (op == -1)
     {
-        
-        if (strcmp (command_name, "PUSH") == 0) // хэш инструкции         
-        {
-            double value = atof (argument);
-            fprintf (command_write, "%d %lg\n", OP_PUSH, value);
-            *ip += 2;
-            return 1;
-        }
-
-        if (strcmp (command_name, "PUSHr") == 0)
-        {
-            int reg = ParseRegister (argument);
-            if (reg == -1)
-            {
-                printf ("Unknown register: %s\n", argument);
-                return -1;
-            }
-
-            fprintf (command_write, "%d %d\n", OP_PUSHr, reg);
-            *ip += 2;
-            return 1;
-        }
-
-        
-        if (strcmp (command_name, "POP") == 0)
-        {
-            int reg = ParseRegister (argument);
-            if (reg == -1)
-            {
-                printf ("Unknown register: %s\n", argument);
-                return -1;
-            }
-
-            fprintf (command_write, "%d %d\n", OP_POP, reg);
-            *ip += 2;
-            return 1;
-        }
-
-        
-
-        if (strcmp (command_name, "JMP") == 0)
-        {
-            int label_number;
-
-            if (argument[0] == ':')
-                label_number = atoi (argument + 1); // если без : это значит прыгать не на метку, а на адрес
-            else
-                label_number = atoi (argument);
-
-            int label = LabelFind (labels, label_number);
-
-
-            fprintf (command_write, "%d %d\n", OP_JMP, label);
-            *ip += 2;
-            return 1;
-        }
-
-        
-        if (strcmp (command_name, "JA") == 0)
-        {
-            int label_number;
-
-            if (argument[0] == ':')
-                label_number = atoi (argument + 1);
-            else
-                label_number = atoi (argument);
-
-            int label = LabelFind (labels, label_number);
-
-            fprintf (command_write, "%d %d\n", OP_JA, label);
-            *ip += 2;
-            return 1;
-        }
-    }
-
-    
-    if (sscanf (line, "%31s", command_name) == 1)
-    {
-        int code = -1;
-
-        if (strcmp (command_name, "ADD") == 0) code = OP_ADD;
-        if (strcmp (command_name, "SUB") == 0) code = OP_SUB;
-        if (strcmp (command_name, "DIV") == 0) code = OP_DIV;
-        if (strcmp (command_name, "OUT") == 0) code = OP_OUT;
-        if (strcmp (command_name, "MUL") == 0) code = OP_MUL;
-
-        if (code >= 0)
-        {
-            fprintf (command_write, "%d\n", code);
-            *ip += 1;
-            return 1;
-        }
-
-        if (strcmp (command_name, "HLT") == 0)
-        {
-            fprintf (command_write, "%d\n", OP_HLT);
-            *ip += 1;
-            return -2;
-        }
-
-        printf ("Unknown command: %s\n", command_name);
+        printf ("Unknown command\n");
         return -1;
     }
 
+
+    switch (op) // под каждый кейс функцию !!!!!!!!!!!!!!!!!!!
+    {
+        case 1:
+        {
+            Push (command_write, ip, argument);
+            return 1;
+            break;
+        }
+
+        case 2:
+        {
+            Add (command_write, ip);
+            return 1;
+        }
+
+        case 3:
+        {
+            Sub (command_write, ip);
+            return 1;
+        }
+
+        case 4:
+        {
+            Div (command_write, ip);
+            return 1;
+        }
+
+        case 5:
+        {
+            Out (command_write, ip);
+            return 1;
+        }
+
+        case 6:
+        {
+            Pop (command_write, ip, argument);
+            return 1;
+        }
+
+        case 7:
+        {
+            Jmp (command_write, labels, ip, argument);
+            return 1;
+        }
+
+        case 8:
+        {
+            Mul (command_write, ip);
+            return 1;
+        }
+
+        case 9:
+        {
+            Ja (command_write, labels, ip, argument);
+            return 1;   
+        }
+
+        case 10:
+        {
+            Pushr (command_write, ip, argument);
+            return 1;
+        }
+
+        case 11:
+        {
+            Call (command_write, labels, ip, argument);
+            return 1;
+        }
+
+        case 12: ////здесь ret !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        {
+            break;
+        }
+
+        case 0:
+        {
+            Hlt (command_write, ip);
+            return -2;
+        }
+
+        default:
+        {
+            printf ("Unknown command\n");
+            return -1;
+        }
+    }
+
     return 0;
+}
+
+int Find_Command (char* command_name)
+{
+    for ( size_t i = 0; commands[i].name != NULL; i++)
+    {
+        if (strcmp (commands[i].name, command_name) == 0)
+        {
+            return commands[i].opcode;
+        }
+    }
+    return -1;
 }
 
 
@@ -338,3 +374,142 @@ int LabelFind (struct LabelTable* t, int label_number)
         return -1;
     return t->labels[label_number];
 }
+
+int marker (const char* line, struct LabelTable* labels, size_t* ip)
+{
+    if (line[0] == ':') // функция метка
+    {
+        int label_number = atoi (line + 1);
+
+        if (label_number >= 0 && label_number < LABEL_MAX)
+        {
+            labels->labels[label_number] = (int)(*ip);
+        }
+        return 1;
+    }
+    return 0;
+}
+
+//============================================================================
+//===========================Комадные функции=================================
+//============================================================================
+void Hlt (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_HLT);
+    *ip += 1;
+}
+
+void Push (FILE* command_write, size_t* ip, char argument[])
+{
+    double value = atof (argument);
+    fprintf (command_write, "%d %lg\n", OP_PUSH, value);
+    *ip += 2;
+    
+}
+
+void Add (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_ADD);
+    *ip += 1;
+}
+
+void Sub (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_SUB);
+    *ip += 1;
+}
+
+void Div (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_DIV);
+    *ip += 1;
+}
+
+void Out (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_OUT);
+    *ip += 1;
+}
+
+int Pop (FILE* command_write, size_t* ip, char argument[])
+{
+    int reg = ParseRegister (argument);
+    if (reg == -1)
+    {
+        printf ("Unknown register: %s\n", argument);
+        return -1;
+    }
+
+    fprintf (command_write, "%d %d\n", OP_POP, reg);
+    *ip += 2;
+}
+
+void Jmp (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+{
+    int label_number;
+
+    if (argument[0] == ':')
+        label_number = atoi (argument + 1);
+    else
+        label_number = atoi (argument);
+
+    int label = LabelFind (labels, label_number);
+
+    fprintf (command_write, "%d %d\n", OP_JMP, label);
+    *ip += 2;
+}
+
+void Mul (FILE* command_write, size_t* ip)
+{
+    fprintf (command_write, "%d\n", OP_MUL);
+    *ip += 1;
+}
+
+
+void Ja (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+{
+    int label_number;
+
+    if (argument[0] == ':')
+        label_number = atoi (argument + 1);
+    else
+        label_number = atoi (argument);
+
+    int label = LabelFind (labels, label_number);
+
+    fprintf (command_write, "%d %d\n", OP_JA, label);
+    *ip += 2;
+}
+
+int Pushr (FILE* command_write, size_t* ip, char argument[])
+{
+    int reg = ParseRegister (argument);
+    if (reg == -1)
+    {
+        printf ("Unknown register: %s\n", argument);
+        return -1;
+    }
+
+    fprintf (command_write, "%d %d\n", OP_PUSHr, reg);
+    *ip += 2;
+}
+
+void Call (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+{
+    int label_number;
+
+    if (argument[0] == ':')
+        label_number = atoi (argument + 1);
+    else
+        label_number = atoi (argument);
+
+    int label = LabelFind (labels, label_number);
+
+    fprintf (command_write, "%d %d\n", OP_CALL, label);
+    *ip += 2;
+}
+
+/*void Ret ()
+{
+
+}*/
