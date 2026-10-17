@@ -24,7 +24,7 @@ void StackInit (struct stack_t* stk, size_t capacity, int* err, ...)
         return;
     }
 
-    stk->data = malloc ((capacity + 2) * sizeof (stack_elem_t));
+    stk->data = calloc ((capacity + 2) , sizeof (stack_elem_t));
 
     if (stk->data == NULL)
     {
@@ -38,11 +38,15 @@ void StackInit (struct stack_t* stk, size_t capacity, int* err, ...)
     stk->data[capacity + 1] = CANARY_VALUE;
 
     for (size_t i = 0; i < capacity; ++i)
+    {
         stk->info_data[i] = STACK_POISON;
-
+    }
+    
     stk->size     = 0;
     stk->capacity = capacity;
     *err = STACK_OK;
+
+    STACK_DUMP (stk, *err);
 }
 
 
@@ -79,7 +83,7 @@ void StackDump (struct stack_t* stk, int err
                 ON_DBG(, const char* file, int line, const char* func))
 {
 #ifdef ONDEBUG
-    printf ("\n========== STACK DUMP ==========\n");
+    printf (BLUE"\n========== STACK DUMP ==========\n" RESET_COLOR);
 
 //#ifdef ONDEBUG
     printf ("Created by  <%s> in Line <%d>   in <%s> func\n", file, line, func);
@@ -96,14 +100,14 @@ void StackDump (struct stack_t* stk, int err
     if (stk->name == NULL)
         printf ("name       = <unnamed>\n");
     else
-        printf ("name       = %s\n", stk->name);
+        printf ("name       = "GREEN"%s\n"RESET_COLOR, stk->name);
 //#endif
 
     printf ("stk        = %p\n", (void*)stk);
     printf ("data       = %p\n", (void*)stk->data);
     printf ("info_data  = %p\n", (void*)stk->info_data);
-    printf ("size       = %zu\n", stk->size);
-    printf ("capacity   = %zu\n", stk->capacity);
+    printf ("size       = "BLUE"%zu\n"RESET_COLOR, stk->size);
+    printf ("capacity   = "BLUE"%zu\n"RESET_COLOR, stk->capacity);
 
     PrintfCanary (stk);
     PrintfStackElem (stk);
@@ -192,10 +196,12 @@ stack_elem_t StackPop (struct stack_t* stk, int* err)
 }
 
 
-void StackDestroy (struct stack_t* stk)
+void StackDestroy (struct stack_t* stk, int* err)
 {
     if (stk == NULL)
         return;
+
+    STACK_DUMP (stk, *err);
 
     free (stk->data);
     stk->data      = NULL;
@@ -219,11 +225,11 @@ void PrintfErr (int err, struct stack_t* stk)
 
     if (verify == STACK_OK)
     {
-        printf ("(OK)\n");
+        printf (GREEN"(OK)\n"RESET_COLOR);
     }
     else
     {
-        printf ("Errors:\n");
+        printf (RED"Errors:\n"RESET_COLOR);
         if (verify & STACK_NULL_PTR)     printf ("NULL_PTR \n");
         if (verify & STACK_MEMORY_ERROR) printf ("MEMORY \n");
         if (verify & STACK_UNDERFLOW)    printf ("UNDERFLOW \n");
@@ -240,11 +246,11 @@ void PrintfErr (int err, struct stack_t* stk)
     }
 
     if (err == 0)
-        printf ("Passed err = %d (%s)\n", err, "OK");
+        printf ("Passed err = %d (%s)\n", err, GREEN"OK"RESET_COLOR);
     else
         printf ("Passed err = %d \n", err);
 
-    printf ("================================\n\n");
+    printf (BLUE"================================\n\n"RESET_COLOR);
 }
 
 
@@ -257,9 +263,9 @@ void PrintfStackElem (struct stack_t* stk)
             if (i >= stk->size)
             {
                 if (isnan (stk->info_data[i]) != 0)
-                    printf ("[%zu] = " STACK_ELEM "%s\n", i, stk->info_data[i], " <!poison!>");
+                    printf ("[%zu] = " STACK_ELEM "%s\n", i, stk->info_data[i], BLUE" <!poison!>"RESET_COLOR);
                 else
-                    printf ("[%zu] = " STACK_ELEM "%s\n", i, stk->info_data[i], " <!NO poison!>");
+                    printf ("[%zu] = " STACK_ELEM "%s\n", i, stk->info_data[i], RED" <!NO poison!>"RESET_COLOR);
             }
             else
             {
@@ -282,13 +288,13 @@ void PrintfCanary (struct stack_t* stk)
         stack_elem_t right_canary = stk->data[stk->capacity + 1];
 
         if (left_canary == CANARY_VALUE)
-            printf ("left  canary = " STACK_ELEM " %s\n", left_canary, "<OK>");
+            printf ("left  canary = " STACK_ELEM " %s\n", left_canary, GREEN"<OK>"RESET_COLOR);
         else
-            printf ("left  canary = " STACK_ELEM " %s\n", left_canary, "<BAD>");
+            printf ("left  canary = " STACK_ELEM " %s\n", left_canary, RED"<BAD>"RESET_COLOR);
 
         if (right_canary == CANARY_VALUE)
-            printf ("right  canary = " STACK_ELEM " %s\n", right_canary, "<OK>");
+            printf ("right  canary = " STACK_ELEM " %s\n", right_canary, GREEN"<OK>"RESET_COLOR);
         else
-            printf ("right  canary = " STACK_ELEM " %s\n", right_canary, "<BAD>");
+            printf ("right  canary = " STACK_ELEM " %s\n", right_canary, RED"<BAD>"RESET_COLOR);
     }
 }
