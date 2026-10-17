@@ -5,6 +5,11 @@
 #define SIZE_BUF    256
 #define LABEL_MAX   4
 
+/* todo 
+хэш инструкции ( сравнивать с цифрами ), делить на функции?
+сделать ret and call
+навести чистоту как в VM.c, делить функции
+*/
 enum Opcode
 {
     OP_HLT      = 0,
@@ -17,7 +22,9 @@ enum Opcode
     OP_JMP      = 7,
     OP_MUL      = 8,
     OP_JA       = 9,
-    OP_PUSHr = 10,
+    OP_PUSHr    = 10,
+    OP_CALL     = 11,
+    OP_RET      = 12,
 };
 
 struct LabelTable
@@ -25,10 +32,20 @@ struct LabelTable
     int labels[LABEL_MAX]; 
 };
 
+//============================================================================
+//===========================Ассемблирование==================================
+//============================================================================
 int  ReadCommand    (char* file_read, char* file_write);
+
+int FirstAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
+int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
+
 int  Translate_Command (const char* line, FILE* command_write,
                      struct LabelTable* labels, int pass, size_t* ip);
 
+//============================================================================
+//===========================Вспомогательные функции==========================
+//============================================================================
 int  ParseRegister  (const char* s);
 void LabelInit      (struct LabelTable* t);
 void LabelAdd       (struct LabelTable* t, int label_number, size_t ip);
@@ -38,22 +55,45 @@ int  LabelFind      (struct LabelTable* t, int label_number);
 
 int main (int argc, char* argv[]) // юзать аргс аргв
 {
-
     ReadCommand ("code.asm", "Processor_write.asm");
-
     return 0;
 }
 
-
+//============================================================================
+//===========================Ассемблирование==================================
+//============================================================================
 
 int ReadCommand (char* file_read, char* file_write)
 {
     struct LabelTable labels = {};
     LabelInit (&labels);
+    char** command_buffer;
 
-    // 
+    // =============================================================================
     // первый пошел
-    // 
+    // =============================================================================
+    
+    if ( FirstAssembling (file_read,file_write, &labels, command_buffer) != 0)
+    {
+        printf ("Review the errors\n");
+        return 1;
+    }
+    
+    // =============================================================================
+    // второй пошел
+    // =============================================================================
+    
+    if ( SecondAssembling (file_read,file_write, &labels, command_buffer) != 0)
+    {
+        printf ("Review the errors\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+int FirstAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
+{
     FILE* pass1 = fopen (file_read, "r");
     if (pass1 == NULL)
     {
@@ -61,8 +101,8 @@ int ReadCommand (char* file_read, char* file_write)
         return 1;
     }
 
-    char* comand_buffer = calloc (SIZE_BUF, sizeof (char));
-    if (comand_buffer == NULL)
+    *command_buffer = calloc (SIZE_BUF, sizeof (char));
+    if (*command_buffer == NULL)
     {
         fclose (pass1);
         return 1;
@@ -71,22 +111,22 @@ int ReadCommand (char* file_read, char* file_write)
     FILE* command_write = fopen (file_write, "w");
     if (command_write == NULL)
     {
-        free (comand_buffer);
+        free (*command_buffer);
         fclose (pass1);
         return 1;
     }
 
     size_t ip = 0;
 
-    while (fgets (comand_buffer, SIZE_BUF - 1, pass1) != NULL) // мб fread om прочитать 
+    while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) // здесь сделать хэши
     {
-        int result = Translate_Command (comand_buffer, command_write,
-                                     &labels, 1, &ip);
+        int result = Translate_Command (*command_buffer, command_write,
+                                     labels, 1, &ip);
 
         if (result == -1)
         {
             printf ("Error with Assembler (pass 1)\n");
-            free (comand_buffer);
+            free (*command_buffer);
             fclose (command_write);
             fclose (pass1);
             return 1;
@@ -95,31 +135,32 @@ int ReadCommand (char* file_read, char* file_write)
 
     fclose (command_write);
     fclose (pass1);
+    return 0;
+}
 
-    // 
-    // второй пошел
-    // 
+int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
+{
     FILE* command_read = fopen (file_read, "r");
     if (command_read == NULL)
     {
-        free (comand_buffer);
+        free (*command_buffer);
         return 1;
     }
 
-    command_write = fopen (file_write, "w");
+    FILE* command_write = fopen (file_write, "w");
     if (command_write == NULL)
     {
-        free (comand_buffer);
+        free (*command_buffer);
         fclose (command_read);
         return 1;
     }
 
-    ip = 0;
+    size_t ip = 0;
 
-    while (fgets (comand_buffer, SIZE_BUF - 1, command_read) != NULL)
+    while (fgets (*command_buffer, SIZE_BUF - 1, command_read) != NULL)
     {
-        int result = Translate_Command (comand_buffer, command_write,
-                                     &labels, 2, &ip);
+        int result = Translate_Command (*command_buffer, command_write,
+                                         labels, 2, &ip);
 
         if (result == -1)
         {
@@ -133,19 +174,15 @@ int ReadCommand (char* file_read, char* file_write)
         }
     }
 
-    free (comand_buffer);
+    free (*command_buffer);
 
     fclose (command_write);
     fclose (command_read);
-
     return 0;
 }
 
-
-
-
 int Translate_Command (const char* line, FILE* command_write,
-                    struct LabelTable* labels, int pass, size_t* ip)
+                    struct LabelTable* labels, int pass, size_t* ip) 
 {
     char command_name[SIZE_BUF] = {};
     char argument[SIZE_BUF] = {};
@@ -164,7 +201,7 @@ int Translate_Command (const char* line, FILE* command_write,
     if (sscanf (line, "%31s %31s", command_name, argument) == 2)
     {
         
-        if (strcmp (command_name, "PUSH") == 0)
+        if (strcmp (command_name, "PUSH") == 0) // хэш инструкции         
         {
             double value = atof (argument);
             fprintf (command_write, "%d %lg\n", OP_PUSH, value);
@@ -271,8 +308,9 @@ int Translate_Command (const char* line, FILE* command_write,
 }
 
 
-
-// ============================================================
+//============================================================================
+//===========================Вспомогательные функции==========================
+//============================================================================
 int ParseRegister (const char* s)
 {
     if (strcmp (s, "AX") == 0) return 0;
@@ -282,23 +320,17 @@ int ParseRegister (const char* s)
     return -1;
 }
 
-
-
 void LabelInit (struct LabelTable* t)
 {
     for (int i = 0; i < LABEL_MAX; i++)
         t->labels[i] = -1;
 }
 
-
-
 void LabelAdd (struct LabelTable* t, int label_number, size_t ip)
 {
     if (label_number < 0 || label_number >= LABEL_MAX) return;
     t->labels[label_number] = (int)ip;
 }
-
-
 
 int LabelFind (struct LabelTable* t, int label_number)
 {
