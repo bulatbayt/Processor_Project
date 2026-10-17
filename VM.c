@@ -1,6 +1,5 @@
 #include "stack_v3.h"
 #include <sys/stat.h>
-#include "color.h" 
 
 /*todo
 поменять привязку
@@ -8,7 +7,7 @@ arc, argv для перенаправления ввода вывода
 
 fread, fwrite -- бинарный тип , переход
 
-новый стэк для call и рет
+Ассемблер добавить CALL и рет
 
 таблица меток, глобальная переменная чтоли?
 */
@@ -61,6 +60,8 @@ struct processor_info
 //=============================================Прототипы Вспомогательных функций ======================================//
 //=====================================================================================================================//
 
+void Label_Init (struct processor_info* prc);
+
 int  ReadFromFile         (const char* read_file, struct Processor_Command* Command);
 
 int  realise_comand       (struct stack_t* stk, struct Processor_Command Command,
@@ -93,27 +94,23 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
     struct stack_t stk1 = {};
     struct Processor_Command Command_info = {};
     struct processor_info prc1 = {};
+    struct stack_t stk2 = {};
 
 
-    for (int i = 0; i < LABEL_MAX; i++) 
-    {
-        prc1.labels[i] = -1;
-    }
-
+    Label_Init (&prc1);
     STACK_INIT (&stk1, 2, &prc1.err);// Передавать только структуры в параметры
+    STACK_INIT (&stk2, 2, &prc1.err); 
 
-    STACK_DUMP (&stk1, prc1.err);
+    printf (BLUE"\n========================Processing working========================\n"RESET_COLOR);
 
     ReadFromFile ("Processor_write.asm", &Command_info);
 
     realise_comand (&stk1, Command_info, &prc1);
 
-    STACK_DUMP (&stk1, prc1.err);
-
-    StackDestroy (&stk1);
+    StackDestroy (&stk1, &prc1.err);
+    StackDestroy (&stk2, &prc1.err);
+    
     free (Command_info.buffer);
-
-
 
     return 0;
 }
@@ -121,6 +118,14 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 // ============================================================
 // Вспомогательные функции
 // ============================================================
+
+void Label_Init (struct processor_info* prc)
+{
+    for (size_t i = 0; i < LABEL_MAX; i++) 
+    {
+        prc->labels[i] = -1;
+    }
+}
 
 int realise_comand (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
 {
@@ -233,35 +238,35 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
 
             case OP_ADD:
             { 
-                Add (stk, err); 
+                Add (stk, prc1); 
                 prc1->ip++; 
                 break;
             }
 
             case OP_SUB:
             {
-                Sub (stk, err); 
+                Sub (stk, prc1); 
                 prc1->ip++; 
                 break;
             }
 
             case OP_DIV:
             {
-                Div (stk, err); 
+                Div (stk, prc1); 
                 prc1->ip++; 
                 break;
             }
 
             case OP_MUL:
             {
-                Mult (stk, err); 
+                Mult (stk, prc1); 
                 prc1->ip++; 
                 break;
             }
 
             case OP_OUT: 
             {
-                Out (stk, err); 
+                Out (stk, prc1); 
                 prc1->ip++; 
                 break;
             }
@@ -512,32 +517,32 @@ void Out (struct stack_t* stk, struct processor_info* prc1)
 
 int  Jump (struct processor_info* prc1)
 {
-    int target = (int)prc1->code[prc1->ip + 1];
+    int aim = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
     {
-    prc1->labels[prc1->labels_amount++] = target; //пока просто записываем метки -- так метки не запишем
+    prc1->labels[prc1->labels_amount++] = aim; //пока просто записываем метки -- так метки не запишем
     }*/
 
-    if (target < 0 || (size_t)target >= prc1->code_size)
+    if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
-        printf ("JMP fail: bad address %d\n", target);
+        printf ("JMP fail: bad address %d\n", aim);
         return -1;
     }
-    prc1->ip = (size_t)target;
+    prc1->ip = (size_t)aim;
     return 0;
 }
 
 int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
 {
-    int target = (int)prc1->code[prc1->ip + 1];
+    int aim = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
     {
-        prc1->labels[prc1->labels_amount++] = target; //пока просто записываем метки -- так метки не запишем
+        prc1->labels[prc1->labels_amount++] = aim; //пока просто записываем метки -- так метки не запишем
     }*/
 
-    if (target < 0 || (size_t)target >= prc1->code_size)
+    if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
-        printf ("JA fail: bad address %d\n", target);
+        printf ("JA fail: bad address %d\n", aim);
         return -1;
     }
 
@@ -549,7 +554,7 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
         return -1;
     }
 
-    if (a > b) prc1->ip = (size_t)target;
+    if (a > b) prc1->ip = (size_t)aim;
     else       prc1->ip += 2;
 
     return 0;
@@ -557,32 +562,33 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
 
 int Call (struct stack_t* stk, struct processor_info* prc1)
 {
-    int target = (int)prc1->code[prc1->ip + 1];
+    int aim = (int)prc1->code[prc1->ip + 1];
     
-    if (target < 0 || (size_t)target >= prc1->code_size)
+    if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
-        printf ("JMP fail: bad address %d\n", target);
+        printf ("Call fail: bad address %d\n", aim);
         return -1;
     }
-    prc1->registers[4] = (stack_elem_t)(prc1->ip + 2);   // сделать стэк для возврата!
-    prc1->ip = (size_t)target;
+
+    stack_elem_t push_value = (stack_elem_t)(prc1->ip + 2);   // сделать стэк для возврата!
+
+    StackPush (stk, push_value, &prc1->err);
+
+    prc1->ip = (size_t)aim;
     return 0;
 }
 
 int Ret (struct stack_t* stk, struct processor_info* prc1)
 {
-    prc1->ip = prc1->registers[4];
-    prc1->registers[4] = 0; 
+    prc1->ip = StackPop (stk, &prc1->err);
     return 0;
 }
 
 void Hlt (struct processor_info* prc1)
 {
 
-    printf ("\n\n===============================Processor finish work===============================\n");
-    printf ("HLT at IP=%zu\n", prc1->ip);
-    printf     ("===================================================================================\n");
+    printf     (BLUE"\n\n===============================Processor finish work===============================\n"RESET_COLOR);
+    printf     ("HLT at IP=%zu\n", prc1->ip);
+    printf     (BLUE    "===================================================================================\n"RESET_COLOR);
 }
-
-
 
