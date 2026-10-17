@@ -3,8 +3,7 @@
 #include "color.h" 
 
 /*todo
-поменять привязку к double -------------------------------------------------------- achieved
-сделать Dump в дебаг -------------------------------------------------------------- achieved
+поменять привязку
 arc, argv для перенаправления ввода вывода
 
 fread, fwrite -- бинарный тип , переход
@@ -12,24 +11,21 @@ fread, fwrite -- бинарный тип , переход
 новый стэк для call и рет
 
 таблица меток, глобальная переменная чтоли?
-
-!!!!!!!!!! забыл крышечку -----------------------------------------------------------achieved
-
-
 */
 
 #define SIZE_BUF        256
 #define LABEL_MAX       4
 #define REG_COUNT       6
+#define ROWS_FOR_INDEX  123
 
 struct Processor_Command
 {
-    int           max_rows;
-    int long long size_file;
-    char* index[123];       // в константу
-    char* buffer;
-    int    opcode;
-    double value;
+    int             max_rows;
+    int long long   size_file;
+    char*           index[ROWS_FOR_INDEX];   
+    char*           buffer;
+    int             opcode;
+    double          value;
 };
 
 enum Opcode
@@ -44,9 +40,9 @@ enum Opcode
     OP_JMP      = 7,
     OP_MUL      = 8,
     OP_JA       = 9,
-    OP_PUSHr = 10,
-    OP_CALL = 11,
-    OP_RET = 12,
+    OP_PUSHr    = 10,
+    OP_CALL     = 11,
+    OP_RET      = 12,
 };
 
 struct processor_info
@@ -56,33 +52,39 @@ struct processor_info
     size_t       code_size;
     int          labels[LABEL_MAX];  
     size_t       labels_amount;
-    int err;
+    int          err;
     stack_elem_t code[1000]; // в константу или динамика
 };
 
-int ReadFromFile     (const char* read_file, struct Processor_Command* Command);
-int realise_comand   (struct stack_t* stk, struct Processor_Command Command,
-                      struct processor_info* prc1);
-
-int ProcessorVerify  (struct processor_info* prc1, struct stack_t* stk, int* err);
-void CPU_Dump            (struct processor_info* prc1, FILE* write_CDump);
-void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc1);
-int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk);
 
 //=====================================================================================================================//
-//=============================================Прототипы операций======================================================//
+//=============================================Прототипы Вспомогательных функций ======================================//
 //=====================================================================================================================//
 
-void Add  (struct stack_t* stk, int* err);
-void Sub  (struct stack_t* stk, int* err);
-void Div  (struct stack_t* stk, int* err);
-void Mult (struct stack_t* stk, int* err);
-void Out  (struct stack_t* stk, int* err);
-int  Jump (struct processor_info* prc1, int* err);
-int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err);
-int Call (struct stack_t* stk, struct processor_info* prc1, int* err);
-int Ret (struct stack_t* stk, struct processor_info* prc1, int* err);
-void Hlt (struct processor_info* prc1 , int* err);
+int  ReadFromFile         (const char* read_file, struct Processor_Command* Command);
+
+int  realise_comand       (struct stack_t* stk, struct Processor_Command Command,
+                          struct processor_info* prc1);
+
+int  ProcessorVerify      (struct processor_info* prc1, struct stack_t* stk, int* err);
+void CPU_Dump             (struct processor_info* prc1, FILE* write_CDump);
+void Parse_Comand         (struct Processor_Command* Command, struct processor_info* prc1);
+int  Start_Commands       (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk);
+
+//=====================================================================================================================//
+//=============================================Прототипы Команд Процессора=============================================//
+//=====================================================================================================================//
+
+void Add       (struct stack_t* stk, struct processor_info* prc1);
+void Sub       (struct stack_t* stk, struct processor_info* prc1);
+void Div       (struct stack_t* stk, struct processor_info* prc1);
+void Mult      (struct stack_t* stk, struct processor_info* prc1);
+void Out       (struct stack_t* stk, struct processor_info* prc1);
+int  Jump      (struct processor_info* prc1);
+int Jump_Above (struct stack_t* stk, struct processor_info* prc1);
+int Call       (struct stack_t* stk, struct processor_info* prc1);
+int Ret        (struct stack_t* stk, struct processor_info* prc1);
+void Hlt       (struct processor_info* prc1);
 
 //=====================================================================================================================//
 
@@ -92,12 +94,11 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
     struct Processor_Command Command_info = {};
     struct processor_info prc1 = {};
 
+
     for (int i = 0; i < LABEL_MAX; i++) 
     {
         prc1.labels[i] = -1;
     }
-
-    //int err = 0; // переменную в стэк
 
     STACK_INIT (&stk1, 2, &prc1.err);// Передавать только структуры в параметры
 
@@ -107,21 +108,18 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
     realise_comand (&stk1, Command_info, &prc1);
 
-    //printf ("\n\n ============================================================\n\n");
-    //CPU_Dump (&prc1);
-    //printf ("\n\n ============================================================\n\n");
-
     STACK_DUMP (&stk1, prc1.err);
 
     StackDestroy (&stk1);
-
     free (Command_info.buffer);
+
+
 
     return 0;
 }
 
 // ============================================================
-// Реализация команд
+// Вспомогательные функции
 // ============================================================
 
 int realise_comand (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
@@ -154,7 +152,7 @@ int realise_comand (struct stack_t* stk, struct Processor_Command Command, struc
     return 0;
 }
 
-int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) //!!!!!!!!!!!!!!!!!!!! Почему он не вызывает верификатор стэка it musts, короче оптимизируем с verivicatorom stacka -- это не годится ---- achieved
+int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) 
 {
     *err = StackVerify (stk1);
     if (prc1 == NULL) 
@@ -171,7 +169,7 @@ int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err
     return 0;
 }
 
-void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) // печатаем код и метки
+void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) 
 {
     #ifdef ONDEBUG
     fprintf (write_CDump, "\n----- CODE -----\n");
@@ -270,7 +268,7 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
 
             case OP_JMP: //!!!!!!!!!!!!! функцию --- achived
             {
-                if (Jump (prc1, err) == -1)
+                if (Jump (prc1) == -1)
                 {
                     fclose (write_CDump);
                     return -1;
@@ -280,7 +278,7 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
 
             case OP_JA: // !!!!!!!!!!!!!!!! функцию -- achieved
             {
-                if ( Jump_Above(stk, prc1, err) == -1)
+                if ( Jump_Above(stk, prc1) == -1)
                 {
                     fclose (write_CDump);
                     return -1;
@@ -291,7 +289,7 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
             case OP_HLT:
             {
                 prc1->ip++;
-                Hlt (prc1, err);
+                Hlt (prc1);
                 fclose (write_CDump);
                 return 0;
             }
@@ -381,22 +379,22 @@ void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc
 }
 
 // ============================================================
-// Команды
+// Команды Процессора
 // ============================================================
-void Add (struct stack_t* stk, int* err)
+void Add (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
-    assert (err != NULL);
+    assert (&prc1->err != NULL);
 
-    stack_elem_t Val2 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val2 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("ADD: not enough operands\n");
         return;
     }
 
-    stack_elem_t Val1 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val1 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("ADD: not enough operands\n");
         return;
@@ -405,25 +403,25 @@ void Add (struct stack_t* stk, int* err)
     stack_elem_t sum = Val1 + Val2;
 
     //printf ("sum <"STACK_ELEM">\n", sum);
-    StackPush (stk, sum, err);
+    StackPush (stk, sum, &prc1->err);
 
-    *err = STACK_OK;
+    prc1->err = STACK_OK;
 }
 
-void Sub (struct stack_t* stk, int* err)
+void Sub (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
-    assert (err != NULL);
+    assert (&prc1->err != NULL);
 
-    stack_elem_t Val2 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val2 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("SUB: not enough operands\n");
         return;
     }
 
-    stack_elem_t Val1 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val1 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("SUB: not enough operands\n");
         return;
@@ -432,25 +430,25 @@ void Sub (struct stack_t* stk, int* err)
     stack_elem_t difference = Val1 - Val2;
 
     //printf ("difference <"STACK_ELEM">\n", difference);
-    StackPush (stk, difference, err);
+    StackPush (stk, difference, &prc1->err);
 
-    *err = STACK_OK;
+    prc1->err = STACK_OK;
 }
 
-void Div (struct stack_t* stk, int* err)
+void Div (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
-    assert (err != NULL);
+    assert (&prc1->err != NULL);
 
-    stack_elem_t Val2 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val2 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("DIV: not enough operands\n");
         return;
     }
 
-    stack_elem_t Val1 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val1 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("DIV: not enough operands\n");
         return;
@@ -459,32 +457,32 @@ void Div (struct stack_t* stk, int* err)
     if (Val2 == 0)
     {
         printf ("DIV: division by zero\n");
-        *err = STACK_OK;
+        prc1->err = STACK_OK;
         return;
     }
 
     stack_elem_t quotient = Val1 / Val2;
 
     //printf ("quotient <"STACK_ELEM">\n", quotient);
-    StackPush (stk, quotient, err);
+    StackPush (stk, quotient, &prc1->err);
 
-    *err = STACK_OK;
+    prc1->err = STACK_OK;
 }
 
-void Mult (struct stack_t* stk, int* err)
+void Mult (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
-    assert (err != NULL);
+    assert (&prc1->err != NULL);
 
-    stack_elem_t Val2 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val2 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("Multiplication: not enough operands\n");
         return;
     }
 
-    stack_elem_t Val1 = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t Val1 = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("Multiplication: not enough operands\n");
         return;
@@ -493,15 +491,15 @@ void Mult (struct stack_t* stk, int* err)
     stack_elem_t multiplication = Val1 * Val2;
 
     //printf ("Multiplication <"STACK_ELEM">\n", multiplication);
-    StackPush (stk, multiplication, err);
+    StackPush (stk, multiplication, &prc1->err);
 
-    *err = STACK_OK;
+    prc1->err = STACK_OK;
 }
 
-void Out (struct stack_t* stk, int* err)
+void Out (struct stack_t* stk, struct processor_info* prc1)
 {
-    stack_elem_t out_elem = StackPop (stk, err); //!!!!!!!!!!!!!!!!!!!!!!!!!!название переменной 
-    if (*err != STACK_OK)
+    stack_elem_t out_elem = StackPop (stk, &prc1->err); //!!!!!!!!!!!!!!!!!!!!!!!!!!название переменной 
+    if (prc1->err != STACK_OK)
     {
         printf ("OUT: stack is empty\n");
         return;
@@ -509,10 +507,10 @@ void Out (struct stack_t* stk, int* err)
     printf ("OP_OUT: ");
     //printf ("Out value: "STACK_ELEM"\n", out_elem;
     printf (STACK_ELEM"\n", out_elem);
-    *err = STACK_OK;
+    prc1->err = STACK_OK;
 }
 
-int  Jump (struct processor_info* prc1, int* err)
+int  Jump (struct processor_info* prc1)
 {
     int target = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
@@ -529,7 +527,7 @@ int  Jump (struct processor_info* prc1, int* err)
     return 0;
 }
 
-int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err)
+int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
 {
     int target = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
@@ -543,9 +541,9 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err)
         return -1;
     }
 
-    stack_elem_t a = StackPop (stk, err);
-    stack_elem_t b = StackPop (stk, err);
-    if (*err != STACK_OK)
+    stack_elem_t a = StackPop (stk, &prc1->err);
+    stack_elem_t b = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
         printf ("JA: stack underflow\n");
         return -1;
@@ -557,7 +555,7 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1, int* err)
     return 0;
 }
 
-int Call (struct stack_t* stk, struct processor_info* prc1, int* err)
+int Call (struct stack_t* stk, struct processor_info* prc1)
 {
     int target = (int)prc1->code[prc1->ip + 1];
     
@@ -571,14 +569,14 @@ int Call (struct stack_t* stk, struct processor_info* prc1, int* err)
     return 0;
 }
 
-int Ret (struct stack_t* stk, struct processor_info* prc1, int* err)
+int Ret (struct stack_t* stk, struct processor_info* prc1)
 {
     prc1->ip = prc1->registers[4];
     prc1->registers[4] = 0; 
     return 0;
 }
 
-void Hlt (struct processor_info* prc1, int* err)
+void Hlt (struct processor_info* prc1)
 {
 
     printf ("\n\n===============================Processor finish work===============================\n");
