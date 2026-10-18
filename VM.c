@@ -42,6 +42,8 @@ enum Opcode
     OP_PUSHr    = 10,
     OP_CALL     = 11,
     OP_RET      = 12,
+    OP_PUSHm    = 13,
+    OP_POPm     = 14,
 };
 
 struct processor_info
@@ -53,6 +55,7 @@ struct processor_info
     size_t       labels_amount;
     int          err;
     stack_elem_t code[1000]; // в константу или динамика
+    size_t*      RAM;
 };
 
 
@@ -60,31 +63,46 @@ struct processor_info
 //=============================================Прототипы Вспомогательных функций ======================================//
 //=====================================================================================================================//
 
-void Label_Init (struct processor_info* prc);
+void Ram_Init             (struct processor_info* prc, size_t size); 
+
+void Label_Init           (struct processor_info* prc);
 
 int  ReadFromFile         (const char* read_file, struct Processor_Command* Command);
 
-int  realise_comand       (struct stack_t* stk, struct Processor_Command Command,
-                          struct processor_info* prc1);
+int  realise_comand       (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1);
 
 int  ProcessorVerify      (struct processor_info* prc1, struct stack_t* stk, int* err);
+
 void CPU_Dump             (struct processor_info* prc1, FILE* write_CDump);
+
 void Parse_Comand         (struct Processor_Command* Command, struct processor_info* prc1);
+
 int  Start_Commands       (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk);
+
+void Draw                 (struct processor_info prc1);
 
 //=====================================================================================================================//
 //=============================================Прототипы Команд Процессора=============================================//
 //=====================================================================================================================//
 
 void Add       (struct stack_t* stk, struct processor_info* prc1);
+
 void Sub       (struct stack_t* stk, struct processor_info* prc1);
+
 void Div       (struct stack_t* stk, struct processor_info* prc1);
+
 void Mult      (struct stack_t* stk, struct processor_info* prc1);
+
 void Out       (struct stack_t* stk, struct processor_info* prc1);
+
 int  Jump      (struct processor_info* prc1);
+
 int Jump_Above (struct stack_t* stk, struct processor_info* prc1);
+
 int Call       (struct stack_t* stk, struct processor_info* prc1);
+
 int Ret        (struct stack_t* stk, struct processor_info* prc1);
+
 void Hlt       (struct processor_info* prc1);
 
 //=====================================================================================================================//
@@ -98,18 +116,19 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
 
     Label_Init (&prc1);
+    Ram_Init   (&prc1, 100);
     STACK_INIT (&stk1, 2, &prc1.err);// Передавать только структуры в параметры
     STACK_INIT (&stk2, 2, &prc1.err); 
 
+
     printf (BLUE"\n========================Processing working========================\n"RESET_COLOR);
-
     ReadFromFile ("Processor_write.asm", &Command_info);
-
     realise_comand (&stk1, Command_info, &prc1);
 
+    printf ("====================The picture================\n");
+    Draw (prc1);
     StackDestroy (&stk1, &prc1.err);
     StackDestroy (&stk2, &prc1.err);
-    
     free (Command_info.buffer);
 
     return 0;
@@ -118,8 +137,12 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 // ============================================================
 // Вспомогательные функции
 // ============================================================
+void Ram_Init        (struct processor_info* prc, size_t size)
+{
+    prc->RAM = calloc (size, sizeof(stack_elem_t));
+}
 
-void Label_Init (struct processor_info* prc)
+void Label_Init      (struct processor_info* prc)
 {
     for (size_t i = 0; i < LABEL_MAX; i++) 
     {
@@ -127,7 +150,7 @@ void Label_Init (struct processor_info* prc)
     }
 }
 
-int realise_comand (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
+int  realise_comand  (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
 {
     
     Parse_Comand (&Command, prc1);
@@ -148,7 +171,7 @@ int realise_comand (struct stack_t* stk, struct Processor_Command Command, struc
 
     if ( Start_Commands (prc1, write_CDump, &prc1->err, stk) != 0)
     {
-        printf ("Error witg realise command, reviev the errors\n");
+        printf ("Error with realise command, review the errors\n");
         return -1;
     }
 
@@ -157,7 +180,7 @@ int realise_comand (struct stack_t* stk, struct Processor_Command Command, struc
     return 0;
 }
 
-int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) 
+int  ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err) 
 {
     *err = StackVerify (stk1);
     if (prc1 == NULL) 
@@ -174,7 +197,7 @@ int ProcessorVerify (struct processor_info* prc1, struct stack_t* stk1, int* err
     return 0;
 }
 
-void CPU_Dump (struct processor_info* prc1, FILE* write_CDump) 
+void CPU_Dump        (struct processor_info* prc1, FILE* write_CDump) 
 {
     #ifdef ONDEBUG
     fprintf (write_CDump, "\n----- CODE -----\n");
@@ -198,7 +221,7 @@ void CPU_Dump (struct processor_info* prc1, FILE* write_CDump)
     #endif
 }
 
-int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk) 
+int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk) 
 {
     while (prc1->ip < prc1->code_size) 
     {
@@ -299,6 +322,23 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
                 return 0;
             }
 
+            case OP_PUSHm:
+            {
+                size_t index = (size_t)prc1->code[prc1->ip + 1];
+                StackPush (stk, prc1->RAM[index], err);
+                prc1->ip += 2;
+                break;
+            }
+
+            case OP_POPm:
+            {
+                stack_elem_t value = StackPop (stk, err);
+                size_t index = (size_t)prc1->code[prc1->ip + 1];
+                prc1->RAM[index] = value;
+                prc1->ip += 2;
+                break;
+            }
+
             default:
             {
                 printf ("Uncnown command\n");
@@ -317,7 +357,7 @@ int Start_Commands (struct processor_info* prc1, FILE* write_CDump, int* err, st
     return 0;
 }
 
-int ReadFromFile (const char* read_file, struct Processor_Command* Command)
+int  ReadFromFile    (const char* read_file, struct Processor_Command* Command)
 {
     assert (read_file != NULL);
     assert (Command->index != NULL);
@@ -365,12 +405,10 @@ int ReadFromFile (const char* read_file, struct Processor_Command* Command)
     return 0;
 }
 
-void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc1)
+void Parse_Comand    (struct Processor_Command* Command, struct processor_info* prc1)
 {
     for (int i = 0; i < Command->max_rows; i++)
     {
-        
-
         if (sscanf (Command->index[i], "%d %lf", &Command->opcode, &Command->value) == 2)
         {
             prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
@@ -379,14 +417,14 @@ void Parse_Comand (struct Processor_Command* Command, struct processor_info* prc
         else if (sscanf (Command->index[i], "%d", &Command->opcode) == 1)
         {
             prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
-        }       
+        }
     }
 }
 
 // ============================================================
 // Команды Процессора
 // ============================================================
-void Add (struct stack_t* stk, struct processor_info* prc1)
+void Add       (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -413,7 +451,7 @@ void Add (struct stack_t* stk, struct processor_info* prc1)
     prc1->err = STACK_OK;
 }
 
-void Sub (struct stack_t* stk, struct processor_info* prc1)
+void Sub       (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -440,7 +478,7 @@ void Sub (struct stack_t* stk, struct processor_info* prc1)
     prc1->err = STACK_OK;
 }
 
-void Div (struct stack_t* stk, struct processor_info* prc1)
+void Div       (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -474,7 +512,7 @@ void Div (struct stack_t* stk, struct processor_info* prc1)
     prc1->err = STACK_OK;
 }
 
-void Mult (struct stack_t* stk, struct processor_info* prc1)
+void Mult      (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -501,7 +539,7 @@ void Mult (struct stack_t* stk, struct processor_info* prc1)
     prc1->err = STACK_OK;
 }
 
-void Out (struct stack_t* stk, struct processor_info* prc1)
+void Out       (struct stack_t* stk, struct processor_info* prc1)
 {
     stack_elem_t out_elem = StackPop (stk, &prc1->err); //!!!!!!!!!!!!!!!!!!!!!!!!!!название переменной 
     if (prc1->err != STACK_OK)
@@ -515,7 +553,7 @@ void Out (struct stack_t* stk, struct processor_info* prc1)
     prc1->err = STACK_OK;
 }
 
-int  Jump (struct processor_info* prc1)
+int  Jump      (struct processor_info* prc1)
 {
     int aim = (int)prc1->code[prc1->ip + 1];
     /*if ( prc1->labels_amount < LABEL_MAX)
@@ -560,7 +598,7 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
     return 0;
 }
 
-int Call (struct stack_t* stk, struct processor_info* prc1)
+int Call       (struct stack_t* stk, struct processor_info* prc1)
 {
     int aim = (int)prc1->code[prc1->ip + 1];
     
@@ -578,13 +616,13 @@ int Call (struct stack_t* stk, struct processor_info* prc1)
     return 0;
 }
 
-int Ret (struct stack_t* stk, struct processor_info* prc1)
+int Ret        (struct stack_t* stk, struct processor_info* prc1)
 {
     prc1->ip = StackPop (stk, &prc1->err);
     return 0;
 }
 
-void Hlt (struct processor_info* prc1)
+void Hlt       (struct processor_info* prc1)
 {
 
     printf     (BLUE"\n\n===============================Processor finish work===============================\n"RESET_COLOR);
@@ -592,3 +630,20 @@ void Hlt (struct processor_info* prc1)
     printf     (BLUE    "===================================================================================\n"RESET_COLOR);
 }
 
+void  Draw     (struct processor_info prc1)
+{
+    for (size_t i = 0; i < 100; i++)
+    {
+        if (i % 10 == 0)
+            printf ("\n");
+
+        if (prc1.RAM[i] != 0)
+        {
+            printf ("1");
+        }
+        if (prc1.RAM[i] == 0)
+        {
+            printf (" ");
+        }
+    }   
+}
