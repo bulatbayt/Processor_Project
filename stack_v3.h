@@ -12,6 +12,7 @@ typedef double stack_elem_t;
 #include <stddef.h>
 #include "color.h" 
 
+
 #define STACK_POISON     (NAN)
 #define CANARY_VALUE     (1e308)
 
@@ -33,8 +34,6 @@ enum StackError
     STACK_LEFT_CANARY   = 1 << 5,
     STACK_RIGHT_CANARY  = 1 << 6,
     STACK_DATA_NULL     = 1 << 8,
-    //===================================================================//
-
 };
 
 enum ProcessorError
@@ -64,13 +63,10 @@ struct stack_t
 int          StackVerify    (struct stack_t* stk);
 void         StackDump       (struct stack_t* stk, int err ON_DBG(, const char* file, int line, const char* func));
 void         StackInit       (struct stack_t* stk, size_t capacity, int* err, ...);
-
 void         StackResize     (struct stack_t* stk, size_t new_capacity, int* err);
 void         StackPush       (struct stack_t* stk, stack_elem_t value, int* err);
 stack_elem_t StackPop        (struct stack_t* stk, int* err);
-
 void         StackDestroy    (struct stack_t* stk, int* err);
-
 void         PrintfErr       (int err, struct stack_t* stk);
 void         PrintfStackElem (struct stack_t* stk);
 void         PrintfCanary    (struct stack_t* stk);
