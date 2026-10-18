@@ -25,6 +25,8 @@ enum Opcode
     OP_PUSHr    = 10,
     OP_CALL     = 11,
     OP_RET      = 12,
+    OP_PUSHm    = 13,
+    OP_POPm     = 14,
 };
 
 struct Command
@@ -56,6 +58,8 @@ struct Command commands[] =
     { "PUSHr", OP_PUSHr },
     { "CALL",  OP_CALL },
     { "RET",   OP_RET },
+    { "PUSHm", OP_PUSHm },
+    { "POPm",  OP_POPm },
 };
 
 //============================================================================
@@ -72,12 +76,12 @@ int  Translate_Command (const char* line, FILE* command_write,
 //============================================================================
 //===========================Вспомогательные функции==========================
 //============================================================================
-int Find_Command    (char* command_name);
+int  Find_Command   (char* command_name);
 int  ParseRegister  (const char* s);
 void LabelInit      (struct LabelTable* t);
 void LabelAdd       (struct LabelTable* t, int label_number, size_t ip);
 int  LabelFind      (struct LabelTable* t, int label_number);
-int marker          (const char* line, struct LabelTable* labels, size_t* ip);
+int  marker         (const char* line, struct LabelTable* labels, size_t* ip);
 
 //============================================================================
 //===========================Командные функции================================
@@ -92,8 +96,11 @@ int  Pop       (FILE* command_write, size_t* ip, char argument[]);
 void Jmp       (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
 void Mul       (FILE* command_write, size_t* ip);
 void Ja        (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
-int Pushr      (FILE* command_write, size_t* ip, char argument[]);
+int  Pushr     (FILE* command_write, size_t* ip, char argument[]);
 void Call      (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
+void Ret       (FILE* command_write, size_t* ip);
+int  Pushm     (FILE* command_write, size_t* ip, char argument[]);
+int  Popm      (FILE* command_write, size_t* ip, char argument[]);
 
 
 int main (int argc, char* argv[]) // юзать аргс аргв
@@ -312,6 +319,25 @@ int Translate_Command (const char* line, FILE* command_write,
 
         case 12: ////здесь ret !!!!!!!!!!!!!!!!!!!!!!!!!!!!
         {
+            Ret (command_write, ip);
+            break;
+        }
+
+        case 13: //PushM
+        {
+            if ( Pushm (command_write, ip, argument) == -1)
+            {
+                printf ("Processor stop working\n");
+            }
+            break;
+        }
+
+        case 14:  // PopM
+        {
+            if ( Popm (command_write, ip, argument) == -1)
+            {
+                printf ("Processor stop working\n");
+            }
             break;
         }
 
@@ -465,7 +491,6 @@ void Mul (FILE* command_write, size_t* ip)
     *ip += 1;
 }
 
-
 void Ja (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
 {
     int label_number;
@@ -513,4 +538,42 @@ void Ret (FILE* command_write, size_t* ip)
 {
     fprintf (command_write, "%d\n", OP_RET);
     *ip ++;
+}
+
+int Pushm (FILE* command_write, size_t* ip, char argument[]) //по хорошему сделать проверку, что сскобка закрылась 
+{
+    int value = 0;
+
+    if (argument [0] == '[')
+    {
+        value = atoi (argument + 1); 
+    }
+
+    else
+    {
+        printf ("Error with syntax\n");
+        return -1;
+    }
+
+    fprintf (command_write, "%d %d\n", OP_PUSHm, value);
+    return 0;
+}
+
+int Popm (FILE* command_write, size_t* ip, char argument[])
+{
+    int value = 0;
+
+    if (argument [0] == '[')
+    {
+        value = atoi (argument + 1); 
+    }
+
+    else
+    {
+        printf ("Error with syntax\n");
+        return -1;
+    }
+
+    fprintf (command_write, "%d %d\n", OP_POPm, value);
+    return 0;
 }
