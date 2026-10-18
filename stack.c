@@ -1,6 +1,10 @@
 #include "stack_v3.h"
 
 
+//============================================================================
+//===========================Управление стэком================================
+//============================================================================
+
 void StackInit (struct stack_t* stk, size_t capacity, int* err, ...)
 {
     assert (stk != NULL);
@@ -49,7 +53,6 @@ void StackInit (struct stack_t* stk, size_t capacity, int* err, ...)
     STACK_DUMP (stk, *err);
 }
 
-
 int StackVerify (struct stack_t* stk)
 {
     if (stk == NULL)
@@ -77,44 +80,6 @@ int StackVerify (struct stack_t* stk)
 
     return err;
 }
-
-
-void StackDump (struct stack_t* stk, int err
-                ON_DBG(, const char* file, int line, const char* func))
-{
-#ifdef ONDEBUG
-    printf (BLUE"\n========== STACK DUMP ==========\n" RESET_COLOR);
-
-//#ifdef ONDEBUG
-    printf ("Created by  <%s> in Line <%d>   in <%s> func\n", file, line, func);
-//#endif
-
-    if (stk == NULL)
-    {
-        printf ("stk == NULL\n");
-        printf ("================================\n\n");
-        return;
-    }
-
-//#ifdef ONDEBUG
-    if (stk->name == NULL)
-        printf ("name       = <unnamed>\n");
-    else
-        printf ("name       = "GREEN"%s\n"RESET_COLOR, stk->name);
-//#endif
-
-    printf ("stk        = %p\n", (void*)stk);
-    printf ("data       = %p\n", (void*)stk->data);
-    printf ("info_data  = %p\n", (void*)stk->info_data);
-    printf ("size       = "BLUE"%zu\n"RESET_COLOR, stk->size);
-    printf ("capacity   = "BLUE"%zu\n"RESET_COLOR, stk->capacity);
-
-    PrintfCanary (stk);
-    PrintfStackElem (stk);
-    PrintfErr (err, stk);
-#endif
-}
-
 
 void StackResize (struct stack_t* stk, size_t new_capacity, int* err)
 {
@@ -151,7 +116,6 @@ void StackResize (struct stack_t* stk, size_t new_capacity, int* err)
     *err = STACK_OK;
 }
 
-
 void StackPush (struct stack_t* stk, stack_elem_t value, int* err)
 {
     assert (stk != NULL);
@@ -167,7 +131,6 @@ void StackPush (struct stack_t* stk, stack_elem_t value, int* err)
     stk->info_data[stk->size++] = value;
     *err = STACK_OK;
 }
-
 
 stack_elem_t StackPop (struct stack_t* stk, int* err)
 {
@@ -195,7 +158,6 @@ stack_elem_t StackPop (struct stack_t* stk, int* err)
     return value;
 }
 
-
 void StackDestroy (struct stack_t* stk, int* err)
 {
     if (stk == NULL)
@@ -217,6 +179,45 @@ void StackDestroy (struct stack_t* stk, int* err)
 #endif
 }
 
+
+//============================================================================
+//===========================Функции вывода информации========================
+//============================================================================
+void StackDump (struct stack_t* stk, int err
+                ON_DBG(, const char* file, int line, const char* func))
+{
+#ifdef ONDEBUG
+    printf (BLUE"\n========== STACK DUMP ==========\n" RESET_COLOR);
+
+//#ifdef ONDEBUG
+    printf ("Created by  <%s> in Line <%d>   in <%s> func\n", file, line, func);
+//#endif
+
+    if (stk == NULL)
+    {
+        printf ("stk == NULL\n");
+        printf ("================================\n\n");
+        return;
+    }
+
+//#ifdef ONDEBUG
+    if (stk->name == NULL)
+        printf ("name       = <unnamed>\n");
+    else
+        printf ("name       = "GREEN"%s\n"RESET_COLOR, stk->name);
+//#endif
+
+    printf ("stk        = %p\n", (void*)stk);
+    printf ("data       = %p\n", (void*)stk->data);
+    printf ("info_data  = %p\n", (void*)stk->info_data);
+    printf ("size       = "BLUE"%zu\n"RESET_COLOR, stk->size);
+    printf ("capacity   = "BLUE"%zu\n"RESET_COLOR, stk->capacity);
+
+    PrintfCanary (stk);
+    PrintfStackElem (stk);
+    PrintfErr (err, stk);
+#endif
+}
 
 void PrintfErr (int err, struct stack_t* stk)
 {
@@ -253,7 +254,6 @@ void PrintfErr (int err, struct stack_t* stk)
     printf (BLUE"================================\n\n"RESET_COLOR);
 }
 
-
 void PrintfStackElem (struct stack_t* stk)
 {
     if (stk->data != NULL && stk->info_data != NULL)
@@ -278,7 +278,6 @@ void PrintfStackElem (struct stack_t* stk)
         printf (" <data is NULL>\n");
     }
 }
-
 
 void PrintfCanary (struct stack_t* stk)
 {
