@@ -509,7 +509,8 @@ void Call (FILE* command_write,  struct LabelTable* labels, size_t* ip, char arg
     *ip += 2;
 }
 
-/*void Ret ()
+void Ret (FILE* command_write, size_t* ip)
 {
-
-}*/
+    fprintf (command_write, "%d\n", OP_RET);
+    *ip ++;
+}
