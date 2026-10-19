@@ -3,12 +3,11 @@
 #include <string.h>
 
 #define SIZE_BUF    256
-#define LABEL_MAX   4
+#define LABEL_MAX   5
 
 /* todo 
-хэш инструкции ( сравнивать с цифрами ), делить на функции? ---- achieved
-сделать ret and call
-навести чистоту как в VM.c, делить функции
+не получается сделать второй JA
+
 */
 enum Opcode
 {
@@ -106,7 +105,7 @@ int  Popm      (FILE* command_write, size_t* ip, char argument[]);
 int main (int argc, char* argv[]) // юзать аргс аргв
 {
     
-    ReadCommand ("code.asm", "Processor_write.asm");
+    ReadCommand ("code_v2.asm", "Processor_write.asm");
     return 0;
 }
 
