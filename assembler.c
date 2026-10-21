@@ -1,32 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "Opcode.h"
 
-#define SIZE_BUF    256
-#define LABEL_MAX   5
-
-/* todo 
-не получается сделать второй JA
-
-*/
-enum Opcode
-{
-    OP_HLT      = 0,
-    OP_PUSH     = 1,
-    OP_ADD      = 2,
-    OP_SUB      = 3,
-    OP_DIV      = 4,
-    OP_OUT      = 5,
-    OP_POP      = 6,
-    OP_JMP      = 7,
-    OP_MUL      = 8,
-    OP_JA       = 9,
-    OP_PUSHr    = 10,
-    OP_CALL     = 11,
-    OP_RET      = 12,
-    OP_PUSHm    = 13,
-    OP_POPm     = 14,
-};
 
 struct Command
 {
@@ -59,6 +35,8 @@ struct Command commands[] =
     { "RET",   OP_RET },
     { "PUSHm", OP_PUSHm },
     { "POPm",  OP_POPm },
+    { "PUSHmr", OP_PUSHmr },
+    { "POPmr",  OP_POPmr },
 };
 
 //============================================================================
@@ -67,6 +45,7 @@ struct Command commands[] =
 int  ReadCommand       (char* file_read, char* file_write);
  
 int  FirstAssembling   (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
+
 int  SecondAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
 
 int  Translate_Command (const char* line, FILE* command_write,
@@ -100,12 +79,13 @@ void Call      (FILE* command_write,  struct LabelTable* labels, size_t* ip, cha
 void Ret       (FILE* command_write, size_t* ip);
 int  Pushm     (FILE* command_write, size_t* ip, char argument[]);
 int  Popm      (FILE* command_write, size_t* ip, char argument[]);
+int  Pushmr    (FILE* command_write, size_t* ip, char argument[]);
+int  Popmr     (FILE* command_write, size_t* ip, char argument[]);
 
 
 int main (int argc, char* argv[]) // юзать аргс аргв
 {
-    
-    ReadCommand ("code_v2.asm", "Processor_write.asm");
+    ReadCommand ("test.asm", "Processor_write.asm");
     return 0;
 }
 
@@ -117,16 +97,16 @@ int ReadCommand (char* file_read, char* file_write)
 {
     struct LabelTable labels = {};
     LabelInit (&labels);
-    char** command_buffer;
+    char* command_buffer = NULL;
 
 
-    if ( FirstAssembling (file_read,file_write, &labels, command_buffer) != 0) 
+    if ( FirstAssembling (file_read,file_write, &labels, &command_buffer) != 0) 
     {
         printf ("Review the errors\n");
         return 1;
     }
     
-    if ( SecondAssembling (file_read,file_write, &labels, command_buffer) != 0) 
+    if ( SecondAssembling (file_read,file_write, &labels, &command_buffer) != 0) 
     {
         printf ("Review the errors\n");
         return 1;
@@ -161,7 +141,7 @@ int FirstAssembling (char* file_read, char* file_write, struct LabelTable* label
 
     size_t ip = 0;
 
-    while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) // здесь сделать хэши   -----achieved
+    while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) 
     {
         //printf ("IP %zu\n", ip);
         int result = Translate_Command (*command_buffer, command_write,
@@ -247,82 +227,82 @@ int Translate_Command (const char* line, FILE* command_write,
     }
 
 
-    switch (op) // под каждый кейс функцию !!!!!!!!!!!!!!!!!!!
+    switch (op) // указатели на функции, через макросы , байт код, бинарник
     {
-        case 1:
+        case OP_PUSH:
         {
             Push (command_write, ip, argument);
             return 1;
             break;
         }
 
-        case 2:
+        case OP_ADD:
         {
             Add (command_write, ip);
             return 1;
         }
 
-        case 3:
+        case OP_SUB:
         {
             Sub (command_write, ip);
             return 1;
         }
 
-        case 4:
+        case OP_DIV:
         {
             Div (command_write, ip);
             return 1;
         }
 
-        case 5:
+        case OP_OUT:
         {
             Out (command_write, ip);
             return 1;
         }
 
-        case 6:
+        case OP_POP:
         {
             Pop (command_write, ip, argument);
             return 1;
         }
 
-        case 7:
+        case OP_JMP:
         {
             Jmp (command_write, labels, ip, argument);
             return 1;
         }
 
-        case 8:
+        case OP_MUL:
         {
             Mul (command_write, ip);
             return 1;
         }
 
-        case 9:
+        case OP_JA:
         {
             Ja (command_write, labels, ip, argument);
             return 1;   
         }
 
-        case 10:
+        case OP_PUSHr:
         {
             Pushr (command_write, ip, argument);
             return 1;
         }
 
-        case 11:
+        case OP_CALL:
         {
             Call (command_write, labels, ip, argument);
             return 1;
         }
 
-        case 12: ////здесь ret !!!!!!!!!!!!!!!!!!!!!!!!!!!!
+        case OP_RET: 
         {
             Ret (command_write, ip);
             break;
         }
 
-        case 13: //PushM
+        case OP_PUSHm:
         {
             if ( Pushm (command_write, ip, argument) == -1)
             {
@@ -331,9 +311,27 @@ int Translate_Command (const char* line, FILE* command_write,
             break;
         }
 
-        case 14:  // PopM
+        case OP_POPm:
         {
             if ( Popm (command_write, ip, argument) == -1)
+            {
+                printf ("Processor stop working\n");
+            }
+            break;
+        }
+
+        case OP_PUSHmr:
+        {
+            if ( Pushmr (command_write, ip, argument) == -1)
+            {
+                printf ("Processor stop working\n");
+            }
+            break;
+        }
+
+        case OP_POPmr:
+        {
+            if ( Popmr (command_write, ip, argument) == -1)
             {
                 printf ("Processor stop working\n");
             }
@@ -356,6 +354,7 @@ int Translate_Command (const char* line, FILE* command_write,
     return 0;
 }
 
+// crc32
 int Find_Command (char* command_name)
 {
     for ( size_t i = 0; commands[i].name != NULL; i++)
@@ -555,6 +554,7 @@ int Pushm (FILE* command_write, size_t* ip, char argument[]) //по хороше
     }
 
     fprintf (command_write, "%d %d\n", OP_PUSHm, value);
+    *ip += 2;
     return 0;
 }
 
@@ -562,7 +562,7 @@ int Popm (FILE* command_write, size_t* ip, char argument[])
 {
     int value = 0;
 
-    if (argument [0] == '[')
+    if (argument [0] == '[') ////////////////////////// Проверку что это число !!!!!!!!!!!!!!!!!!!!!!!!!
     {
         value = atoi (argument + 1); 
     }
@@ -574,5 +574,64 @@ int Popm (FILE* command_write, size_t* ip, char argument[])
     }
 
     fprintf (command_write, "%d %d\n", OP_POPm, value);
+    *ip += 2;
+    return 0;
+}
+
+int Pushmr (FILE* command_write, size_t* ip, char argument[])
+{
+    char registers[5] = { };
+
+    if (argument [0] == '[') 
+    {
+        size_t i = 1;
+        while ( i < 5 && argument[i] != ']')
+        {
+            registers[i-1] = argument[i];
+            i++;
+        }
+        registers[i] = '\0';
+    }
+
+    else
+    {
+        printf ("Error with syntax\n");
+        return -1;
+    }
+
+    int reg = ParseRegister (registers);
+    
+
+    fprintf (command_write, "%d %d\n", OP_PUSHmr, reg);
+    *ip += 2;
+    return 0;
+}
+
+int Popmr (FILE* command_write, size_t* ip, char argument[])
+{
+    char registers[5] = { };
+
+    if (argument [0] == '[') 
+    {
+        size_t i = 1;
+        while ( i < 5 && argument[i] != ']')
+        {
+            registers[i-1] = argument[i];
+            i++;
+        }
+        registers[i-1] = '\0';
+    }
+
+    else
+    {
+        printf ("Error with syntax\n");
+        return -1;
+    }
+
+    int reg = ParseRegister (registers);
+    
+
+    fprintf (command_write, "%d %d\n", OP_POPmr, reg);
+    *ip += 2;
     return 0;
 }
