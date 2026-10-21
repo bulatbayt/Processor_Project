@@ -1,19 +1,12 @@
 #include "stack_v3.h"
 #include <sys/stat.h>
-
+#include "Opcode.h"
 /*todo
-поменять привязку
-arc, argv для перенаправления ввода вывода
-
+////////////////arc, argv для перенаправления ввода вывода
+в константу или динамика
 fread, fwrite -- бинарный тип , переход
-
-Ассемблер добавить CALL и рет
-
-таблица меток, глобальная переменная чтоли?
 */
 
-#define SIZE_BUF        256
-#define LABEL_MAX       4
 #define REG_COUNT       6
 #define ROWS_FOR_INDEX  123
 
@@ -27,24 +20,6 @@ struct Processor_Command
     double          value;
 };
 
-enum Opcode
-{
-    OP_HLT      = 0,
-    OP_PUSH     = 1,
-    OP_ADD      = 2,
-    OP_SUB      = 3,
-    OP_DIV      = 4,
-    OP_OUT      = 5,
-    OP_POP      = 6,
-    OP_JMP      = 7,
-    OP_MUL      = 8,
-    OP_JA       = 9,
-    OP_PUSHr    = 10,
-    OP_CALL     = 11,
-    OP_RET      = 12,
-    OP_PUSHm    = 13,
-    OP_POPm     = 14,
-};
 
 struct processor_info
 {
@@ -54,7 +29,7 @@ struct processor_info
     int          labels[LABEL_MAX];  
     size_t       labels_amount;
     int          err;
-    stack_elem_t code[1000]; // в константу или динамика
+    stack_elem_t code[1000]; 
     size_t*      RAM;
 };
 
@@ -117,7 +92,7 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
     Label_Init (&prc1);
     Ram_Init   (&prc1, 100);
-    STACK_INIT (&stk1, 2, &prc1.err);// Передавать только структуры в параметры
+    STACK_INIT (&stk1, 2, &prc1.err);
     STACK_INIT (&stk2, 2, &prc1.err); 
 
 
@@ -294,7 +269,7 @@ int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, 
                 break;
             }
 
-            case OP_JMP: //!!!!!!!!!!!!! функцию --- achived
+            case OP_JMP: 
             {
                 if (Jump (prc1) == -1)
                 {
@@ -304,7 +279,7 @@ int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, 
                 break;
             }
 
-            case OP_JA: // !!!!!!!!!!!!!!!! функцию -- achieved
+            case OP_JA: 
             {
                 if ( Jump_Above(stk, prc1) == -1)
                 {
@@ -335,6 +310,38 @@ int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, 
                 stack_elem_t value = StackPop (stk, err);
                 size_t index = (size_t)prc1->code[prc1->ip + 1];
                 prc1->RAM[index] = value;
+                prc1->ip += 2;
+                break;
+            }
+
+            case OP_CALL:
+            {
+                if (Call(stk, prc1) == -1)
+                {
+                    return -1;
+                }
+                break;
+            }
+
+            case OP_RET:
+            {
+                Ret (stk, prc1);
+                break;
+            }
+
+            case OP_PUSHmr:
+            {
+                int reg = (int)prc1->code[prc1->ip + 1];
+                StackPush (stk, prc1->RAM[(size_t)prc1->registers[reg]], err);
+                prc1->ip += 2;
+                break;
+            }
+
+            case OP_POPmr:
+            {
+                stack_elem_t value = StackPop (stk, err);
+                int reg = (int)prc1->code[prc1->ip + 1];
+                prc1->RAM[(size_t)prc1->registers[reg]] = value;
                 prc1->ip += 2;
                 break;
             }
@@ -541,7 +548,7 @@ void Mult      (struct stack_t* stk, struct processor_info* prc1)
 
 void Out       (struct stack_t* stk, struct processor_info* prc1)
 {
-    stack_elem_t out_elem = StackPop (stk, &prc1->err); //!!!!!!!!!!!!!!!!!!!!!!!!!!название переменной 
+    stack_elem_t out_elem = StackPop (stk, &prc1->err);  
     if (prc1->err != STACK_OK)
     {
         printf ("OUT: stack is empty\n");
@@ -573,10 +580,6 @@ int  Jump      (struct processor_info* prc1)
 int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
 {
     int aim = (int)prc1->code[prc1->ip + 1];
-    /*if ( prc1->labels_amount < LABEL_MAX)
-    {
-        prc1->labels[prc1->labels_amount++] = aim; //пока просто записываем метки -- так метки не запишем
-    }*/
 
     if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
@@ -608,7 +611,7 @@ int Call       (struct stack_t* stk, struct processor_info* prc1)
         return -1;
     }
 
-    stack_elem_t push_value = (stack_elem_t)(prc1->ip + 2);   // сделать стэк для возврата!
+    stack_elem_t push_value = (stack_elem_t)(prc1->ip + 2);  
 
     StackPush (stk, push_value, &prc1->err);
 
@@ -618,7 +621,7 @@ int Call       (struct stack_t* stk, struct processor_info* prc1)
 
 int Ret        (struct stack_t* stk, struct processor_info* prc1)
 {
-    prc1->ip = StackPop (stk, &prc1->err);
+    prc1->ip = (size_t)StackPop (stk, &prc1->err);
     return 0;
 }
 
@@ -639,7 +642,7 @@ void  Draw     (struct processor_info prc1)
 
         if (prc1.RAM[i] != 0)
         {
-            printf ("1");
+            printf (".");
         }
         if (prc1.RAM[i] == 0)
         {
