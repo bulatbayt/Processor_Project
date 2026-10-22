@@ -39,6 +39,9 @@ struct Command commands[] =
     { "POPmr",  OP_POPmr },
 };
 
+typedef int (*CommandFunc)(FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+
+
 //============================================================================
 //===========================Ассемблирование==================================
 //============================================================================
@@ -64,27 +67,49 @@ int  marker         (const char* line, struct LabelTable* labels, size_t* ip);
 //============================================================================
 //===========================Командные функции================================
 //============================================================================
-void Hlt       (FILE* command_write, size_t* ip);
-void Push      (FILE* command_write, size_t* ip, char argument[]);
-void Add       (FILE* command_write, size_t* ip);
-void Sub       (FILE* command_write, size_t* ip);
-void Div       (FILE* command_write, size_t* ip);
-void Out       (FILE* command_write, size_t* ip);
-int  Pop       (FILE* command_write, size_t* ip, char argument[]);
-void Jmp       (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
-void Mul       (FILE* command_write, size_t* ip);
-void Ja        (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
-int  Pushr     (FILE* command_write, size_t* ip, char argument[]);
-void Call      (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[]);
-void Ret       (FILE* command_write, size_t* ip);
-int  Pushm     (FILE* command_write, size_t* ip, char argument[]);
-int  Popm      (FILE* command_write, size_t* ip, char argument[]);
-int  Pushmr    (FILE* command_write, size_t* ip, char argument[]);
-int  Popmr     (FILE* command_write, size_t* ip, char argument[]);
+int  Hlt       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Push      (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Add       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Sub       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Div       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Out       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Pop       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Jmp       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Mul       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Ja        (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Pushr     (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Call      (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Ret       (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Pushm     (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Popm      (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Pushmr    (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+int  Popmr     (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]);
+
+CommandFunc command_table[] = 
+{
+    [OP_HLT]    = Hlt,
+    [OP_PUSH]   = Push,
+    [OP_ADD]    = Add,
+    [OP_SUB]    = Sub,
+    [OP_DIV]    = Div,
+    [OP_OUT]    = Out,
+    [OP_POP]    = Pop,
+    [OP_JMP]    = Jmp,
+    [OP_MUL]    = Mul,
+    [OP_JA]     = Ja,
+    [OP_PUSHr]  = Pushr,
+    [OP_CALL]   = Call,
+    [OP_RET]    = Ret,
+    [OP_PUSHm]  = Pushm,
+    [OP_POPm]   = Popm,
+    [OP_PUSHmr] = Pushmr,
+    [OP_POPmr]  = Popmr,
+};
 
 
 int main (int argc, char* argv[]) // юзать аргс аргв
 {
+   
     ReadCommand ("test.asm", "Processor_write.asm");
     return 0;
 }
@@ -227,130 +252,17 @@ int Translate_Command (const char* line, FILE* command_write,
     }
 
 
-    switch (op) // указатели на функции, через макросы , байт код, бинарник
-    {
-        case OP_PUSH:
-        {
-            Push (command_write, ip, argument);
-            return 1;
-            break;
-        }
-
-        case OP_ADD:
-        {
-            Add (command_write, ip);
-            return 1;
-        }
-
-        case OP_SUB:
-        {
-            Sub (command_write, ip);
-            return 1;
-        }
-
-        case OP_DIV:
-        {
-            Div (command_write, ip);
-            return 1;
-        }
-
-        case OP_OUT:
-        {
-            Out (command_write, ip);
-            return 1;
-        }
-
-        case OP_POP:
-        {
-            Pop (command_write, ip, argument);
-            return 1;
-        }
-
-        case OP_JMP:
-        {
-            Jmp (command_write, labels, ip, argument);
-            return 1;
-        }
-
-        case OP_MUL:
-        {
-            Mul (command_write, ip);
-            return 1;
-        }
-
-        case OP_JA:
-        {
-            Ja (command_write, labels, ip, argument);
-            return 1;   
-        }
-
-        case OP_PUSHr:
-        {
-            Pushr (command_write, ip, argument);
-            return 1;
-        }
-
-        case OP_CALL:
-        {
-            Call (command_write, labels, ip, argument);
-            return 1;
-        }
-
-        case OP_RET: 
-        {
-            Ret (command_write, ip);
-            break;
-        }
-
-        case OP_PUSHm:
-        {
-            if ( Pushm (command_write, ip, argument) == -1)
-            {
-                printf ("Processor stop working\n");
-            }
-            break;
-        }
-
-        case OP_POPm:
-        {
-            if ( Popm (command_write, ip, argument) == -1)
-            {
-                printf ("Processor stop working\n");
-            }
-            break;
-        }
-
-        case OP_PUSHmr:
-        {
-            if ( Pushmr (command_write, ip, argument) == -1)
-            {
-                printf ("Processor stop working\n");
-            }
-            break;
-        }
-
-        case OP_POPmr:
-        {
-            if ( Popmr (command_write, ip, argument) == -1)
-            {
-                printf ("Processor stop working\n");
-            }
-            break;
-        }
-
-        case 0:
-        {
-            Hlt (command_write, ip);
-            return -2;
-        }
-
-        default:
-        {
-            printf ("Unknown command\n");
-            return -1;
-        }
+    int result = command_table[op](command_write, ip, labels, argument);
+    if (result == -1) 
+    { 
+        printf("Error\n"); 
+        return -1; 
     }
-
+    if (result == -2) 
+    { 
+        return -2; 
+    }
+    
     return 0;
 }
 
@@ -417,45 +329,50 @@ int marker (const char* line, struct LabelTable* labels, size_t* ip)
 //============================================================================
 //===========================Комадные функции=================================
 //============================================================================
-void Hlt (FILE* command_write, size_t* ip)
+int  Hlt   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_HLT);
     *ip += 1;
+    return -2;
 }
 
-void Push (FILE* command_write, size_t* ip, char argument[])
+int  Push  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     double value = atof (argument);
     fprintf (command_write, "%d %lg\n", OP_PUSH, value);
     *ip += 2;
-    
+    return 0;
 }
 
-void Add (FILE* command_write, size_t* ip)
+int  Add   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_ADD);
     *ip += 1;
+    return 0;
 }
 
-void Sub (FILE* command_write, size_t* ip)
+int  Sub   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_SUB);
     *ip += 1;
+    return 0;
 }
 
-void Div (FILE* command_write, size_t* ip)
+int  Div   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_DIV);
     *ip += 1;
+    return 0;
 }
 
-void Out (FILE* command_write, size_t* ip)
+int  Out   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_OUT);
     *ip += 1;
+    return 0;
 }
 
-int Pop (FILE* command_write, size_t* ip, char argument[])
+int Pop    (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int reg = ParseRegister (argument);
     if (reg == -1)
@@ -466,9 +383,10 @@ int Pop (FILE* command_write, size_t* ip, char argument[])
 
     fprintf (command_write, "%d %d\n", OP_POP, reg);
     *ip += 2;
+    return 0;
 }
 
-void Jmp (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+int  Jmp   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int label_number;
 
@@ -481,15 +399,17 @@ void Jmp (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argu
 
     fprintf (command_write, "%d %d\n", OP_JMP, label);
     *ip += 2;
+    return 0;
 }
 
-void Mul (FILE* command_write, size_t* ip)
+int  Mul   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_MUL);
     *ip += 1;
+    return 0;
 }
 
-void Ja (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+int  Ja    (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int label_number;
 
@@ -502,9 +422,10 @@ void Ja (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argum
 
     fprintf (command_write, "%d %d\n", OP_JA, label);
     *ip += 2;
+    return 0;
 }
 
-int Pushr (FILE* command_write, size_t* ip, char argument[])
+int Pushr  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int reg = ParseRegister (argument);
     if (reg == -1)
@@ -515,9 +436,10 @@ int Pushr (FILE* command_write, size_t* ip, char argument[])
 
     fprintf (command_write, "%d %d\n", OP_PUSHr, reg);
     *ip += 2;
+    return 0;
 }
 
-void Call (FILE* command_write,  struct LabelTable* labels, size_t* ip, char argument[])
+int  Call  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int label_number;
 
@@ -530,15 +452,17 @@ void Call (FILE* command_write,  struct LabelTable* labels, size_t* ip, char arg
 
     fprintf (command_write, "%d %d\n", OP_CALL, label);
     *ip += 2;
+    return 0;
 }
 
-void Ret (FILE* command_write, size_t* ip)
+int  Ret   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     fprintf (command_write, "%d\n", OP_RET);
     *ip ++;
+    return 0;
 }
 
-int Pushm (FILE* command_write, size_t* ip, char argument[]) //по хорошему сделать проверку, что сскобка закрылась 
+int Pushm  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]) //по хорошему сделать проверку, что сскобка закрылась 
 {
     int value = 0;
 
@@ -558,7 +482,7 @@ int Pushm (FILE* command_write, size_t* ip, char argument[]) //по хороше
     return 0;
 }
 
-int Popm (FILE* command_write, size_t* ip, char argument[])
+int Popm   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int value = 0;
 
@@ -578,7 +502,7 @@ int Popm (FILE* command_write, size_t* ip, char argument[])
     return 0;
 }
 
-int Pushmr (FILE* command_write, size_t* ip, char argument[])
+int Pushmr (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     char registers[5] = { };
 
@@ -607,7 +531,7 @@ int Pushmr (FILE* command_write, size_t* ip, char argument[])
     return 0;
 }
 
-int Popmr (FILE* command_write, size_t* ip, char argument[])
+int Popmr  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     char registers[5] = { };
 
