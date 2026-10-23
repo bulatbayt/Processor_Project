@@ -3,36 +3,30 @@
 #include "Opcode.h"
 /*todo
 ////////////////arc, argv для перенаправления ввода вывода
-в константу или динамика
-fread, fwrite -- бинарный тип , переход
+в константу или динамика --achieved
+fread, fwrite -- бинарный тип , переход -- achieved
+0) сделать функции полными, чтобы они делали сами все вещи из switcha --achieved
+1) выставить одиннаковые сигнатуры функций --achieved
+2) убрать свитч кэйс --achieved
+бинарные операции
 */
 
 #define REG_COUNT       6
-#define ROWS_FOR_INDEX  123
-
-struct Processor_Command
-{
-    int             max_rows;
-    int long long   size_file;
-    char*           index[ROWS_FOR_INDEX];   
-    char*           buffer;
-    int             opcode;
-    double          value;
-};
-
 
 struct processor_info
 {
-    stack_elem_t registers[REG_COUNT]; // Ax Bx Cx CallX ---- как 
-    size_t       ip;                    
-    size_t       code_size;
-    int          labels[LABEL_MAX];  
-    size_t       labels_amount;
-    int          err;
-    stack_elem_t code[1000]; 
-    size_t*      RAM;
+    stack_elem_t   registers[REG_COUNT]; // Ax Bx Cx CallX ---- как 
+    size_t         ip;                    
+    size_t         code_size;
+    int            labels[LABEL_MAX];  
+    size_t         labels_amount;
+    int            err;
+    unsigned char* code; // динамика
+    size_t*        RAM;
 };
 
+
+typedef int (*command_func) (struct stack_t* stk, struct processor_info* prc1);
 
 //=====================================================================================================================//
 //=============================================Прототипы Вспомогательных функций ======================================//
@@ -42,15 +36,13 @@ void Ram_Init             (struct processor_info* prc, size_t size);
 
 void Label_Init           (struct processor_info* prc);
 
-int  ReadFromFile         (const char* read_file, struct Processor_Command* Command);
+int  LoadFromBinary       (const char* read_file, struct processor_info* prc1);
 
-int  realise_comand       (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1);
+int  realise_comand       (struct stack_t* stk, const char* filename, struct processor_info* prc1);
 
 int  ProcessorVerify      (struct processor_info* prc1, struct stack_t* stk, int* err);
 
 void CPU_Dump             (struct processor_info* prc1, FILE* write_CDump);
-
-void Parse_Comand         (struct Processor_Command* Command, struct processor_info* prc1);
 
 int  Start_Commands       (struct processor_info* prc1, FILE* write_CDump, int* err, struct stack_t* stk);
 
@@ -60,32 +52,67 @@ void Draw                 (struct processor_info prc1);
 //=============================================Прототипы Команд Процессора=============================================//
 //=====================================================================================================================//
 
-void Add       (struct stack_t* stk, struct processor_info* prc1);
+int PushPrc    (struct stack_t* stk, struct processor_info* prc1);
 
-void Sub       (struct stack_t* stk, struct processor_info* prc1);
+int PopPrc     (struct stack_t* stk, struct processor_info* prc1);
 
-void Div       (struct stack_t* stk, struct processor_info* prc1);
+int Add        (struct stack_t* stk, struct processor_info* prc1);
 
-void Mult      (struct stack_t* stk, struct processor_info* prc1);
+int Sub        (struct stack_t* stk, struct processor_info* prc1);
 
-void Out       (struct stack_t* stk, struct processor_info* prc1);
+int Div        (struct stack_t* stk, struct processor_info* prc1);
 
-int  Jump      (struct processor_info* prc1);
+int Mult       (struct stack_t* stk, struct processor_info* prc1);
+
+int Out        (struct stack_t* stk, struct processor_info* prc1);
+
+int Jump       (struct stack_t* stk, struct processor_info* prc1);
 
 int Jump_Above (struct stack_t* stk, struct processor_info* prc1);
+
+int Pushr      (struct stack_t* stk, struct processor_info* prc1);
 
 int Call       (struct stack_t* stk, struct processor_info* prc1);
 
 int Ret        (struct stack_t* stk, struct processor_info* prc1);
 
-void Hlt       (struct processor_info* prc1);
+int Pushm      (struct stack_t* stk, struct processor_info* prc1);
+
+int Popm       (struct stack_t* stk, struct processor_info* prc1);
+
+int Pushmr     (struct stack_t* stk, struct processor_info* prc1);
+
+int Popmr      (struct stack_t* stk, struct processor_info* prc1);
+
+int Hlt        (struct stack_t* stk, struct processor_info* prc1);
 
 //=====================================================================================================================//
 
-int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
+command_func command_list[] =
+{
+    [OP_HLT]  = Hlt,
+    [OP_PUSH] = PushPrc,
+    [OP_ADD]  = Add,
+    [OP_SUB]  = Sub,
+    [OP_DIV]  = Div,
+    [OP_OUT]  = Out,
+    [OP_POP]  = PopPrc,
+    [OP_JMP]  = Jump,
+    [OP_MUL]    = Mult,
+    [OP_JA]     = Jump_Above,
+    [OP_PUSHr]  = Pushr,
+    [OP_CALL]   = Call,
+    [OP_RET]    = Ret,
+    [OP_PUSHm]  = Pushm,
+    [OP_POPm]   = Popm,
+    [OP_PUSHmr]   = Pushmr,
+    [OP_POPmr]   = Popmr,
+};
+
+
+int main (int argc, char* argv[]) 
 {
     struct stack_t stk1 = {};
-    struct Processor_Command Command_info = {};
     struct processor_info prc1 = {};
     struct stack_t stk2 = {};
 
@@ -97,15 +124,22 @@ int main (int argc, char* argv[]) // !!!!!!!!!!! юзаем
 
 
     printf (BLUE"\n========================Processing working========================\n"RESET_COLOR);
-    ReadFromFile ("Processor_write.asm", &Command_info);
-    realise_comand (&stk1, Command_info, &prc1);
+    
+    realise_comand (&stk1, "Processor_write.bin", &prc1);
 
-    printf ("====================The picture================\n");
+    printf ("========================The picture========================\n");
     Draw (prc1);
     StackDestroy (&stk1, &prc1.err);
     StackDestroy (&stk2, &prc1.err);
-    free (Command_info.buffer);
 
+    if (prc1.code != NULL) 
+    {
+        free (prc1.code);
+    }
+    if (prc1.RAM != NULL)  
+    {
+        free (prc1.RAM);
+    }
     return 0;
 }
 
@@ -125,10 +159,13 @@ void Label_Init      (struct processor_info* prc)
     }
 }
 
-int  realise_comand  (struct stack_t* stk, struct Processor_Command Command, struct processor_info* prc1)
+int  realise_comand  (struct stack_t* stk, const char* filename, struct processor_info* prc1)
 {
-    
-    Parse_Comand (&Command, prc1);
+    if ( LoadFromBinary (filename, prc1) != 0)
+    {
+        printf ("Error load binary\n");
+        return -1;
+    }
 
     int verify = ProcessorVerify (prc1, stk, &prc1->err);
     if (verify != 0)
@@ -147,10 +184,46 @@ int  realise_comand  (struct stack_t* stk, struct Processor_Command Command, str
     if ( Start_Commands (prc1, write_CDump, &prc1->err, stk) != 0)
     {
         printf ("Error with realise command, review the errors\n");
+        fclose (write_CDump);
         return -1;
     }
 
     fclose (write_CDump);
+
+    return 0;
+}
+
+int LoadFromBinary   (const char* read_file, struct processor_info* prc1)
+{
+    FILE* Command_file = fopen (read_file, "rb");
+
+    if (Command_file == NULL)
+    {
+        perror ("fopen");
+        return -1;
+    }
+
+    fseek (Command_file, 0, SEEK_END);
+    size_t file_size = ftell (Command_file);
+    fseek (Command_file, 0, SEEK_SET);
+
+    if (file_size <= 0) 
+    {
+        printf ("Empty file\n");
+        fclose (Command_file);
+        return -1;
+    }
+
+    prc1->code = calloc (file_size, sizeof(char));
+    if (prc1->code == NULL)
+    {
+        fclose (Command_file);
+        return -1;
+    }
+    prc1->code_size = (size_t)file_size;
+
+    fread (prc1->code, sizeof(char), prc1->code_size, Command_file);
+    fclose (Command_file);
 
     return 0;
 }
@@ -178,7 +251,7 @@ void CPU_Dump        (struct processor_info* prc1, FILE* write_CDump)
     fprintf (write_CDump, "\n----- CODE -----\n");
     for (size_t i = 0; i < prc1->code_size; i++)
     {
-        fprintf (write_CDump, "  [%zu] " STACK_ELEM , i, prc1->code[i]);
+        fprintf (write_CDump, "  [%zu] %02X" , i, prc1->code[i]); // Выводим как HEX байт
         
         if (prc1->ip == i)
         {
@@ -186,13 +259,6 @@ void CPU_Dump        (struct processor_info* prc1, FILE* write_CDump)
         } 
         fprintf (write_CDump, "\n");
     }
-
-    /*printf ("\n----- LABELS -----\n"); // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! починить
-    for (int i = 0; i < LABEL_MAX; i++)
-    {
-        if (prc1->labels[i] != -1)
-            printf ("  :%d -> %d\n", i, prc1->labels[i]);
-    }*/
     #endif
 }
 
@@ -200,158 +266,27 @@ int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, 
 {
     while (prc1->ip < prc1->code_size) 
     {
-        int command_code = (int)prc1->code[prc1->ip];
+        unsigned char command_code = prc1->code[prc1->ip];
         CPU_Dump (prc1, write_CDump);
-        switch (command_code)
+        
+        prc1->ip += 1; // Сдвигаем на опкод
+        // если функция возвращает -1 закроем все освободим и тд
+        // hlt возвращает -2, тогда тоже закрываем файл
+        //memcpy - это наверное долго в каждой функции 
+
+        int result = command_list[command_code](stk, prc1);
+
+        if (result == -1)
         {
-            case OP_PUSH:
-            {
-                stack_elem_t value = prc1->code[prc1->ip + 1];
-                StackPush (stk, value, err);
-                prc1->ip += 2;
-                break;
-            }
+            printf ("Error in func \"Starts_Commands\": return results = -1 \n");
+            //fclose (write_CDump); уже закрываем после ретёрна start_commands
+            return -1;
+        }
 
-            case OP_PUSHr:
-            {
-                int reg = (int)prc1->code[prc1->ip + 1];
-                StackPush (stk, prc1->registers[reg], err);
-                prc1->ip += 2;
-                break;
-            }
-
-            case OP_POP: 
-            {
-                int reg = (int)prc1->code[prc1->ip + 1];
-                stack_elem_t v = StackPop (stk, err);
-                if (*err != STACK_OK)
-                {
-                    printf ("POP: stack is empty\n");
-                    return -1;
-                }
-                prc1->registers[reg] = v;
-                prc1->ip += 2;
-                break;
-            }
-
-            case OP_ADD:
-            { 
-                Add (stk, prc1); 
-                prc1->ip++; 
-                break;
-            }
-
-            case OP_SUB:
-            {
-                Sub (stk, prc1); 
-                prc1->ip++; 
-                break;
-            }
-
-            case OP_DIV:
-            {
-                Div (stk, prc1); 
-                prc1->ip++; 
-                break;
-            }
-
-            case OP_MUL:
-            {
-                Mult (stk, prc1); 
-                prc1->ip++; 
-                break;
-            }
-
-            case OP_OUT: 
-            {
-                Out (stk, prc1); 
-                prc1->ip++; 
-                break;
-            }
-
-            case OP_JMP: 
-            {
-                if (Jump (prc1) == -1)
-                {
-                    fclose (write_CDump);
-                    return -1;
-                }
-                break;
-            }
-
-            case OP_JA: 
-            {
-                if ( Jump_Above(stk, prc1) == -1)
-                {
-                    fclose (write_CDump);
-                    return -1;
-                }
-                break;
-            }
-
-            case OP_HLT:
-            {
-                prc1->ip++;
-                Hlt (prc1);
-                fclose (write_CDump);
-                return 0;
-            }
-
-            case OP_PUSHm:
-            {
-                size_t index = (size_t)prc1->code[prc1->ip + 1];
-                StackPush (stk, prc1->RAM[index], err);
-                prc1->ip += 2;
-                break;
-            }
-
-            case OP_POPm:
-            {
-                stack_elem_t value = StackPop (stk, err);
-                size_t index = (size_t)prc1->code[prc1->ip + 1];
-                prc1->RAM[index] = value;
-                prc1->ip += 2;
-                break;
-            }
-
-            case OP_CALL:
-            {
-                if (Call(stk, prc1) == -1)
-                {
-                    return -1;
-                }
-                break;
-            }
-
-            case OP_RET:
-            {
-                Ret (stk, prc1);
-                break;
-            }
-
-            case OP_PUSHmr:
-            {
-                int reg = (int)prc1->code[prc1->ip + 1];
-                StackPush (stk, prc1->RAM[(size_t)prc1->registers[reg]], err);
-                prc1->ip += 2;
-                break;
-            }
-
-            case OP_POPmr:
-            {
-                stack_elem_t value = StackPop (stk, err);
-                int reg = (int)prc1->code[prc1->ip + 1];
-                prc1->RAM[(size_t)prc1->registers[reg]] = value;
-                prc1->ip += 2;
-                break;
-            }
-
-            default:
-            {
-                printf ("Uncnown command\n");
-                fclose (write_CDump);
-                return -1;
-            }
+        if (result == -2)
+        {
+            printf ("Finish processor work\n");
+            return 0;
         }
 
         if (*err != STACK_OK)
@@ -364,74 +299,48 @@ int  Start_Commands  (struct processor_info* prc1, FILE* write_CDump, int* err, 
     return 0;
 }
 
-int  ReadFromFile    (const char* read_file, struct Processor_Command* Command)
+// ============================================================
+// Команды Процессора
+// ============================================================
+int PushPrc    (struct stack_t* stk, struct processor_info* prc1)
 {
-    assert (read_file != NULL);
-    assert (Command->index != NULL);
+    stack_elem_t value;
+    memcpy (&value, &prc1->code[prc1->ip], sizeof (stack_elem_t));
+    prc1->ip += sizeof (stack_elem_t);
+    StackPush (stk, value, &prc1->err);
+    return 0;
+}
 
-    FILE* Command_file = fopen (read_file, "rb");
-
-    if (Command_file == NULL)
+int PopPrc     (struct stack_t* stk, struct processor_info* prc1)
+{
+    int reg;
+    memcpy (&reg, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
+    
+    stack_elem_t v = StackPop (stk, &prc1->err);
+    if (prc1->err != STACK_OK)
     {
-        perror ("fopen");
+        printf ("POP: stack is empty\n");
         return -1;
     }
-
-    int file_dis = fileno (Command_file);
-
-    struct stat stat_file;
-
-    fstat (file_dis, &stat_file);
-
-    Command->size_file = stat_file.st_size;
-
-    Command->buffer = calloc (Command->size_file + 1, sizeof (char));
-    if (Command->buffer == NULL)
-    {
-        fclose (Command_file);
-        return -1;
-    }
-
-    fread (Command->buffer, sizeof (char), Command->size_file, Command_file);
-    (Command->buffer)[Command->size_file] = '\0';
-
-    Command->index [0] = Command->buffer;
-
-    for (int i = 0; i < Command->size_file; i ++)
-    {
-        if ( *(Command->buffer + i) == '\n')
-        {
-            *(Command->buffer + i) = '\0';
-            Command->max_rows ++;
-            Command->index [ Command->max_rows] =  Command->buffer + i + 1;
-        }
-    }
-
-    fclose (Command_file);
+    prc1->registers[reg] = v;
 
     return 0;
 }
 
-void Parse_Comand    (struct Processor_Command* Command, struct processor_info* prc1)
+int Pushr      (struct stack_t* stk, struct processor_info* prc1)
 {
-    for (int i = 0; i < Command->max_rows; i++)
-    {
-        if (sscanf (Command->index[i], "%d %lf", &Command->opcode, &Command->value) == 2)
-        {
-            prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
-            prc1->code[prc1->code_size++] = (stack_elem_t)Command->value;
-        }
-        else if (sscanf (Command->index[i], "%d", &Command->opcode) == 1)
-        {
-            prc1->code[prc1->code_size++] = (stack_elem_t)Command->opcode;
-        }
-    }
+    int reg;
+    memcpy (&reg, &prc1->code[prc1->ip], sizeof (int));
+    
+    prc1->ip += sizeof (int);
+
+    StackPush (stk, prc1->registers[reg], &prc1->err);
+
+    return 0;
 }
 
-// ============================================================
-// Команды Процессора
-// ============================================================
-void Add       (struct stack_t* stk, struct processor_info* prc1)
+int Add        (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -440,25 +349,25 @@ void Add       (struct stack_t* stk, struct processor_info* prc1)
     if (prc1->err != STACK_OK)
     {
         printf ("ADD: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t Val1 = StackPop (stk, &prc1->err);
     if (prc1->err != STACK_OK)
     {
         printf ("ADD: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t sum = Val1 + Val2;
 
-    //printf ("sum <"STACK_ELEM">\n", sum);
     StackPush (stk, sum, &prc1->err);
 
     prc1->err = STACK_OK;
+    return 0;
 }
 
-void Sub       (struct stack_t* stk, struct processor_info* prc1)
+int Sub        (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -467,25 +376,25 @@ void Sub       (struct stack_t* stk, struct processor_info* prc1)
     if (prc1->err != STACK_OK)
     {
         printf ("SUB: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t Val1 = StackPop (stk, &prc1->err);
     if (prc1->err != STACK_OK)
     {
         printf ("SUB: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t difference = Val1 - Val2;
 
-    //printf ("difference <"STACK_ELEM">\n", difference);
     StackPush (stk, difference, &prc1->err);
 
     prc1->err = STACK_OK;
+    return 0;
 }
 
-void Div       (struct stack_t* stk, struct processor_info* prc1)
+int Div        (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -494,32 +403,32 @@ void Div       (struct stack_t* stk, struct processor_info* prc1)
     if (prc1->err != STACK_OK)
     {
         printf ("DIV: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t Val1 = StackPop (stk, &prc1->err);
     if (prc1->err != STACK_OK)
     {
         printf ("DIV: not enough operands\n");
-        return;
+        return -1;
     }
 
     if (Val2 == 0)
     {
         printf ("DIV: division by zero\n");
         prc1->err = STACK_OK;
-        return;
+        return -1;
     }
 
     stack_elem_t quotient = Val1 / Val2;
 
-    //printf ("quotient <"STACK_ELEM">\n", quotient);
     StackPush (stk, quotient, &prc1->err);
 
     prc1->err = STACK_OK;
+    return 0;
 }
 
-void Mult      (struct stack_t* stk, struct processor_info* prc1)
+int Mult       (struct stack_t* stk, struct processor_info* prc1)
 {
     assert (stk != NULL);
     assert (&prc1->err != NULL);
@@ -528,45 +437,43 @@ void Mult      (struct stack_t* stk, struct processor_info* prc1)
     if (prc1->err != STACK_OK)
     {
         printf ("Multiplication: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t Val1 = StackPop (stk, &prc1->err);
     if (prc1->err != STACK_OK)
     {
         printf ("Multiplication: not enough operands\n");
-        return;
+        return -1;
     }
 
     stack_elem_t multiplication = Val1 * Val2;
 
-    //printf ("Multiplication <"STACK_ELEM">\n", multiplication);
     StackPush (stk, multiplication, &prc1->err);
 
     prc1->err = STACK_OK;
+    return 0;
 }
 
-void Out       (struct stack_t* stk, struct processor_info* prc1)
+int Out        (struct stack_t* stk, struct processor_info* prc1)
 {
     stack_elem_t out_elem = StackPop (stk, &prc1->err);  
     if (prc1->err != STACK_OK)
     {
         printf ("OUT: stack is empty\n");
-        return;
+        return -1;
     }
     printf ("OP_OUT: ");
-    //printf ("Out value: "STACK_ELEM"\n", out_elem;
     printf (STACK_ELEM"\n", out_elem);
     prc1->err = STACK_OK;
+    return 0;
 }
 
-int  Jump      (struct processor_info* prc1)
+int  Jump      (struct stack_t* stk, struct processor_info* prc1)
 {
-    int aim = (int)prc1->code[prc1->ip + 1];
-    /*if ( prc1->labels_amount < LABEL_MAX)
-    {
-    prc1->labels[prc1->labels_amount++] = aim; //пока просто записываем метки -- так метки не запишем
-    }*/
+    int aim;
+    memcpy (&aim, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
 
     if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
@@ -579,7 +486,9 @@ int  Jump      (struct processor_info* prc1)
 
 int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
 {
-    int aim = (int)prc1->code[prc1->ip + 1];
+    int aim;
+    memcpy (&aim, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
 
     if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
@@ -596,14 +505,15 @@ int Jump_Above (struct stack_t* stk, struct processor_info* prc1)
     }
 
     if (a > b) prc1->ip = (size_t)aim;
-    else       prc1->ip += 2;
 
     return 0;
 }
 
 int Call       (struct stack_t* stk, struct processor_info* prc1)
 {
-    int aim = (int)prc1->code[prc1->ip + 1];
+    int aim;
+    memcpy (&aim, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
     
     if (aim < 0 || (size_t)aim >= prc1->code_size)
     {
@@ -611,7 +521,7 @@ int Call       (struct stack_t* stk, struct processor_info* prc1)
         return -1;
     }
 
-    stack_elem_t push_value = (stack_elem_t)(prc1->ip + 2);  
+    stack_elem_t push_value = (stack_elem_t)(prc1->ip);  
 
     StackPush (stk, push_value, &prc1->err);
 
@@ -625,12 +535,58 @@ int Ret        (struct stack_t* stk, struct processor_info* prc1)
     return 0;
 }
 
-void Hlt       (struct processor_info* prc1)
+int Pushm      (struct stack_t* stk, struct processor_info* prc1)
+{
+    int index;
+    memcpy (&index, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
+    
+    StackPush (stk, prc1->RAM[index], &prc1->err);
+
+    return 0;
+}
+
+int Popm       (struct stack_t* stk, struct processor_info* prc1)
+{
+    int index;
+    memcpy (&index, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
+
+    stack_elem_t value = StackPop (stk, &prc1->err);
+    prc1->RAM[index] = value;
+
+    return 0;
+}
+
+int Pushmr     (struct stack_t* stk, struct processor_info* prc1)
+{
+    int reg;
+    memcpy (&reg, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
+
+    StackPush (stk, prc1->RAM[(size_t)prc1->registers[reg]], &prc1->err);
+    return 0;
+}
+
+int Popmr      (struct stack_t* stk, struct processor_info* prc1)
+{
+    int reg;
+    memcpy (&reg, &prc1->code[prc1->ip], sizeof (int));
+    prc1->ip += sizeof (int);
+
+    stack_elem_t value = StackPop (stk, &prc1->err);
+    prc1->RAM[(size_t)prc1->registers[reg]] = value;
+
+    return 0;
+}
+
+int Hlt        (struct stack_t* stk, struct processor_info* prc1)
 {
 
     printf     (BLUE"\n\n===============================Processor finish work===============================\n"RESET_COLOR);
     printf     ("HLT at IP=%zu\n", prc1->ip);
     printf     (BLUE    "===================================================================================\n"RESET_COLOR);
+    return 0;
 }
 
 void  Draw     (struct processor_info prc1)
