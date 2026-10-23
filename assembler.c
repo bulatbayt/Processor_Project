@@ -3,10 +3,12 @@
 #include <string.h>
 #include "Opcode.h"
 
-
+/* ==================================
+ сделал бинарный файл, сделать другую переменную по тиму ip, на ip теперь тяжело 
+*/
 struct Command
 {
-    char* name;;
+    char* name;
     int   opcode;
 };
 
@@ -16,7 +18,7 @@ struct LabelTable
 };
 
 //============================================================================
-//===========================Хэширование======================================
+//===========================Хэширование====================================== //неправильное хэширование
 //============================================================================
 struct Command commands[] =
 {
@@ -48,11 +50,8 @@ typedef int (*CommandFunc)(FILE* command_write, size_t* ip, struct LabelTable* l
 int  ReadCommand       (char* file_read, char* file_write);
  
 int  FirstAssembling   (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
-
 int  SecondAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
-
-int  Translate_Command (const char* line, FILE* command_write,
-                     struct LabelTable* labels, int pass, size_t* ip);
+int  Translate_Command (const char* line, FILE* command_write, struct LabelTable* labels, int pass, size_t* ip);
 
 //============================================================================
 //===========================Вспомогательные функции==========================
@@ -107,10 +106,9 @@ CommandFunc command_table[] =
 };
 
 
-int main (int argc, char* argv[]) // юзать аргс аргв
+int main (int argc, char* argv[])
 {
-   
-    ReadCommand ("test.asm", "Processor_write.asm");
+    ReadCommand ("test.asm", "Processor_write.bin");
     return 0;
 }
 
@@ -156,7 +154,7 @@ int FirstAssembling (char* file_read, char* file_write, struct LabelTable* label
         return 1;
     }
 
-    FILE* command_write = fopen (file_write, "w");
+    FILE* command_write = fopen (file_write, "wb"); // Бинарный режим
     if (command_write == NULL)
     {
         free (*command_buffer);
@@ -168,14 +166,13 @@ int FirstAssembling (char* file_read, char* file_write, struct LabelTable* label
 
     while (fgets (*command_buffer, SIZE_BUF - 1, pass1) != NULL) 
     {
-        //printf ("IP %zu\n", ip);
         int result = Translate_Command (*command_buffer, command_write,
                                      labels, 1, &ip);
 
         if (result == -1)
         {
             printf ("Error with Assembler (pass 1)\n");
-            free (*command_buffer);
+            free   (*command_buffer);
             fclose (command_write);
             fclose (pass1);
             return 1;
@@ -196,7 +193,7 @@ int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labe
         return 1;
     }
 
-    FILE* command_write = fopen (file_write, "w");
+    FILE* command_write = fopen (file_write, "wb"); 
     if (command_write == NULL)
     {
         free (*command_buffer);
@@ -313,7 +310,7 @@ int LabelFind (struct LabelTable* t, int label_number)
 
 int marker (const char* line, struct LabelTable* labels, size_t* ip)
 {
-    if (line[0] == ':') // функция метка
+    if (line[0] == ':') 
     {
         int label_number = atoi (line + 1);
 
@@ -331,43 +328,52 @@ int marker (const char* line, struct LabelTable* labels, size_t* ip)
 //============================================================================
 int  Hlt   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_HLT);
+    unsigned char opcode = OP_HLT;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return -2;
 }
 
 int  Push  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
+    unsigned char opcode = OP_PUSH;
     double value = atof (argument);
-    fprintf (command_write, "%d %lg\n", OP_PUSH, value);
-    *ip += 2;
+    
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&value,  sizeof(double),        1, command_write);
+    
+    *ip += 1 + sizeof(double);
     return 0;
 }
 
 int  Add   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_ADD);
+    unsigned char opcode = OP_ADD;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return 0;
 }
 
 int  Sub   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_SUB);
+    unsigned char opcode = OP_SUB;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return 0;
 }
 
 int  Div   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_DIV);
+    unsigned char opcode = OP_DIV;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return 0;
 }
 
 int  Out   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_OUT);
+    unsigned char opcode = OP_OUT;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return 0;
 }
@@ -381,12 +387,15 @@ int Pop    (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
         return -1;
     }
 
-    fprintf (command_write, "%d %d\n", OP_POP, reg);
-    *ip += 2;
+    unsigned char opcode = OP_POP;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&reg,    sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
-int  Jmp   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
+int  Jmp   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]) 
 {
     int label_number;
 
@@ -397,14 +406,18 @@ int  Jmp   (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
 
     int label = LabelFind (labels, label_number);
 
-    fprintf (command_write, "%d %d\n", OP_JMP, label);
-    *ip += 2;
+    unsigned char opcode = OP_JMP;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&label,  sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
 int  Mul   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_MUL);
+    unsigned char opcode = OP_MUL;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
     *ip += 1;
     return 0;
 }
@@ -420,8 +433,11 @@ int  Ja    (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
 
     int label = LabelFind (labels, label_number);
 
-    fprintf (command_write, "%d %d\n", OP_JA, label);
-    *ip += 2;
+    unsigned char opcode = OP_JA;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&label,  sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
@@ -434,8 +450,11 @@ int Pushr  (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
         return -1;
     }
 
-    fprintf (command_write, "%d %d\n", OP_PUSHr, reg);
-    *ip += 2;
+    unsigned char opcode = OP_PUSHr;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&reg,    sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
@@ -450,19 +469,23 @@ int  Call  (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
 
     int label = LabelFind (labels, label_number);
 
-    fprintf (command_write, "%d %d\n", OP_CALL, label);
-    *ip += 2;
+    unsigned char opcode = OP_CALL;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&label,  sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
 int  Ret   (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
-    fprintf (command_write, "%d\n", OP_RET);
-    *ip ++;
+    unsigned char opcode = OP_RET;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    *ip += 1;
     return 0;
 }
 
-int Pushm  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[]) //по хорошему сделать проверку, что сскобка закрылась 
+int Pushm  (FILE* command_write, size_t* ip, struct LabelTable* labels, char argument[])
 {
     int value = 0;
 
@@ -470,15 +493,17 @@ int Pushm  (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
     {
         value = atoi (argument + 1); 
     }
-
     else
     {
         printf ("Error with syntax\n");
         return -1;
     }
 
-    fprintf (command_write, "%d %d\n", OP_PUSHm, value);
-    *ip += 2;
+    unsigned char opcode = OP_PUSHm;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&value,  sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
@@ -486,19 +511,21 @@ int Popm   (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
 {
     int value = 0;
 
-    if (argument [0] == '[') ////////////////////////// Проверку что это число !!!!!!!!!!!!!!!!!!!!!!!!!
+    if (argument [0] == '[') 
     {
         value = atoi (argument + 1); 
     }
-
     else
     {
         printf ("Error with syntax\n");
         return -1;
     }
 
-    fprintf (command_write, "%d %d\n", OP_POPm, value);
-    *ip += 2;
+    unsigned char opcode = OP_POPm;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&value,  sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
@@ -509,14 +536,15 @@ int Pushmr (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
     if (argument [0] == '[') 
     {
         size_t i = 1;
-        while ( i < 5 && argument[i] != ']')
+        size_t j = 0;
+        while ( i < 5 && argument[i] != ']' && argument[i] != '\0')
         {
-            registers[i-1] = argument[i];
+            registers[j] = argument[i];
             i++;
+            j++;
         }
-        registers[i] = '\0';
+        registers[j] = '\0';
     }
-
     else
     {
         printf ("Error with syntax\n");
@@ -524,10 +552,17 @@ int Pushmr (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
     }
 
     int reg = ParseRegister (registers);
-    
+    if (reg == -1)
+    {
+        printf ("Unknown register: %s\n", registers);
+        return -1;
+    }
 
-    fprintf (command_write, "%d %d\n", OP_PUSHmr, reg);
-    *ip += 2;
+    unsigned char opcode = OP_PUSHmr;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&reg,    sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
 
@@ -538,14 +573,15 @@ int Popmr  (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
     if (argument [0] == '[') 
     {
         size_t i = 1;
-        while ( i < 5 && argument[i] != ']')
+        size_t j = 0;
+        while ( i < 5 && argument[i] != ']' && argument[i] != '\0')
         {
-            registers[i-1] = argument[i];
+            registers[j] = argument[i];
             i++;
+            j++;
         }
-        registers[i-1] = '\0';
+        registers[j] = '\0';
     }
-
     else
     {
         printf ("Error with syntax\n");
@@ -553,9 +589,16 @@ int Popmr  (FILE* command_write, size_t* ip, struct LabelTable* labels, char arg
     }
 
     int reg = ParseRegister (registers);
-    
+    if (reg == -1)
+    {
+        printf ("Unknown register: %s\n", registers);
+        return -1;
+    }
 
-    fprintf (command_write, "%d %d\n", OP_POPmr, reg);
-    *ip += 2;
+    unsigned char opcode = OP_POPmr;
+    fwrite (&opcode, sizeof(unsigned char), 1, command_write);
+    fwrite (&reg,    sizeof(int),           1, command_write);
+    
+    *ip += 1 + sizeof(int);
     return 0;
 }
