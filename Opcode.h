@@ -19,5 +19,6 @@ enum Opcode
     OP_POPmr    = 16,
 };
 
+#define SIZE_OPCODE 17
 #define SIZE_BUF    256
 #define LABEL_MAX   5
