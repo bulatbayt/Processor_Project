@@ -2,26 +2,22 @@
 #include <sys/stat.h>
 #include "Opcode.h"
 /*todo
-////////////////arc, argv для перенаправления ввода вывода
-в константу или динамика --achieved
-fread, fwrite -- бинарный тип , переход -- achieved
-0) сделать функции полными, чтобы они делали сами все вещи из switcha --achieved
-1) выставить одиннаковые сигнатуры функций --achieved
-2) убрать свитч кэйс --achieved
+argc, argv[]
 бинарные операции
+
 */
 
 #define REG_COUNT       6
 
 struct processor_info
 {
-    stack_elem_t   registers[REG_COUNT]; // Ax Bx Cx CallX ---- как 
+    stack_elem_t   registers[REG_COUNT];
     size_t         ip;                    
     size_t         code_size;
     int            labels[LABEL_MAX];  
     size_t         labels_amount;
     int            err;
-    unsigned char* code; // динамика
+    unsigned char* code; // динамика -- achieved
     size_t*        RAM;
 };
 
@@ -121,14 +117,11 @@ int main (int argc, char* argv[])
     Ram_Init   (&prc1, 100);
     STACK_INIT (&stk1, 2, &prc1.err);
     STACK_INIT (&stk2, 2, &prc1.err); 
-
-
-    printf (BLUE"\n========================Processing working========================\n"RESET_COLOR);
     
-    realise_comand (&stk1, "Processor_write.bin", &prc1);
 
-    printf ("========================The picture========================\n");
+    realise_comand (&stk1, "Processor_write.bin", &prc1);
     Draw (prc1);
+
     StackDestroy (&stk1, &prc1.err);
     StackDestroy (&stk2, &prc1.err);
 
@@ -140,6 +133,7 @@ int main (int argc, char* argv[])
     {
         free (prc1.RAM);
     }
+
     return 0;
 }
 
@@ -161,6 +155,8 @@ void Label_Init      (struct processor_info* prc)
 
 int  realise_comand  (struct stack_t* stk, const char* filename, struct processor_info* prc1)
 {
+    printf (BLUE"\n========================Processing working========================\n"RESET_COLOR);
+
     if ( LoadFromBinary (filename, prc1) != 0)
     {
         printf ("Error load binary\n");
@@ -591,6 +587,8 @@ int Hlt        (struct stack_t* stk, struct processor_info* prc1)
 
 void  Draw     (struct processor_info prc1)
 {
+    printf ("========================The picture========================\n");
+
     for (size_t i = 0; i < 100; i++)
     {
         if (i % 10 == 0)
