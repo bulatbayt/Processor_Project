@@ -3,13 +3,12 @@
 #include <string.h>
 #include "Opcode.h"
 
-/* ==================================
- сделал бинарный файл, сделать другую переменную по тиму ip, на ip теперь тяжело 
-*/
+
 struct Command
 {
-    char* name;
-    int   opcode;
+    unsigned int hash_code;
+    char*        name;
+    int          opcode;
 };
 
 struct LabelTable
@@ -25,29 +24,31 @@ struct Hash_Table
 //============================================================================
 //===========================Хэширование====================================== //неправильное хэширование
 //============================================================================
-struct Command commands[] =
+struct Command commands[] =  // глобальная переменная, скорее всего это плохо, можно сделать ее не глобальной, нужно будет передавать в функции
 {
-    { "HLT",   OP_HLT },
-    { "PUSH",  OP_PUSH },
-    { "ADD",   OP_ADD },
-    { "SUB",   OP_SUB },
-    { "DIV",   OP_DIV },
-    { "OUT",   OP_OUT },
-    { "POP",   OP_POP },
-    { "JMP",   OP_JMP },
-    { "MUL",   OP_MUL },
-    { "JA",    OP_JA },
-    { "PUSHr", OP_PUSHr },
-    { "CALL",  OP_CALL },
-    { "RET",   OP_RET },
-    { "PUSHm", OP_PUSHm },
-    { "POPm",  OP_POPm },
-    { "PUSHmr", OP_PUSHmr },
-    { "POPmr",  OP_POPmr },
+    {0, "HLT",   OP_HLT    },
+    {0, "PUSH",  OP_PUSH   },
+    {0, "ADD",   OP_ADD    },
+    {0, "SUB",   OP_SUB    },
+    {0, "DIV",   OP_DIV    },
+    {0, "OUT",   OP_OUT    },
+    {0, "POP",   OP_POP    },
+    {0, "JMP",   OP_JMP    },
+    {0, "MUL",   OP_MUL    },
+    {0, "JA",    OP_JA     },
+    {0, "PUSHr", OP_PUSHr  },
+    {0, "CALL",  OP_CALL   },
+    {0, "RET",   OP_RET    },
+    {0, "PUSHm", OP_PUSHm  },
+    {0, "POPm",  OP_POPm   },
+    {0, "PUSHmr", OP_PUSHmr},
+    {0, "POPmr",  OP_POPmr },
 };
 
-int Hash_Table_Init (struct Hash_Table* Hash);
-unsigned int Crc32 (const char* s);
+
+int          Hash_Table_Init (struct Command Commands[]);
+unsigned int Crc32           (const char* s);
+size_t       binary_search   (unsigned int value, struct Command commands[], size_t size_data);
 
 //============================================================================
 //============================================================================
@@ -58,8 +59,8 @@ typedef int (*CommandFunc)(FILE* command_write, size_t* ip, struct LabelTable* l
 //============================================================================
 //===========================Ассемблирование==================================
 //============================================================================
+
 int  ReadCommand       (char* file_read, char* file_write);
- 
 int  FirstAssembling   (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
 int  SecondAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer);
 int  Translate_Command (const char* line, FILE* command_write, struct LabelTable* labels, int pass, size_t* ip);
@@ -67,13 +68,13 @@ int  Translate_Command (const char* line, FILE* command_write, struct LabelTable
 //============================================================================
 //===========================Вспомогательные функции==========================
 //============================================================================
-int  Find_Command   (char* command_name);
-int  ParseRegister  (const char* s);
-void LabelInit      (struct LabelTable* t);
-void LabelAdd       (struct LabelTable* t, int label_number, size_t ip);
-int  LabelFind      (struct LabelTable* t, int label_number);
-int  marker         (const char* line, struct LabelTable* labels, size_t* ip);
-
+int  Find_Command          (char* command_name); // уже не нужна
+int  ParseRegister         (const char* s);
+void LabelInit             (struct LabelTable* t);
+void LabelAdd              (struct LabelTable* t, int label_number, size_t ip);
+int  LabelFind             (struct LabelTable* t, int label_number);
+int  marker                (const char* line, struct LabelTable* labels, size_t* ip);
+int  Compare_struct_Up     (const void* value_1, const void* value_2);
 //============================================================================
 //===========================Командные функции================================
 //============================================================================
@@ -122,10 +123,22 @@ CommandFunc command_table[] =
 1) создать табличку в самом начале -> пробежаться по массиву, чтобы сделать хэш таблицу, Но нужно завести новую переменную, которая будет считать только команды (например cp)
 2) 1 пункт фигня - делаем то же самое, нужно ручками сделать хэш таблицу для каждого оп кода, при чтении, сравнивать их как числа <_---- как переводить строку в число ?
 3) после перевода текста в число (какой то алгоритм) пробегаемся по хэш таблице бинарным поиском
+
+текующая проблема - массив не отсортирован, если отсортировать потеряем порядок команд, который давал инфу, что это за операция
+сделать массив структур, который будет содержать опкод, как было до этого
+
+
+Проблемы: 1)binary_search сломается если не найдет такой команды
+2)
+
 */
 
 int main (int argc, char* argv[])
 {
+    Hash_Table_Init (commands);
+    
+    qsort (commands, SIZE_OPCODE, sizeof(struct Command), Compare_struct_Up); 
+
     ReadCommand ("test.asm", "Processor_write.bin");
     return 0;
 }
@@ -134,7 +147,7 @@ int main (int argc, char* argv[])
 //===========================Ассемблирование==================================
 //============================================================================
 
-int ReadCommand (char* file_read, char* file_write)
+int ReadCommand       (char* file_read, char* file_write)
 {
     struct LabelTable labels = {};
     LabelInit (&labels);
@@ -156,7 +169,7 @@ int ReadCommand (char* file_read, char* file_write)
     return 0;
 }
 
-int FirstAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
+int FirstAssembling   (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
 {
     FILE* pass1 = fopen (file_read, "r");
     if (pass1 == NULL)
@@ -202,7 +215,7 @@ int FirstAssembling (char* file_read, char* file_write, struct LabelTable* label
     return 0;
 }
 
-int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
+int SecondAssembling  (char* file_read, char* file_write, struct LabelTable* labels, char** command_buffer)
 {
     FILE* command_read = fopen (file_read, "r");
     if (command_read == NULL)
@@ -245,8 +258,7 @@ int SecondAssembling (char* file_read, char* file_write, struct LabelTable* labe
     return 0;
 }
 
-int Translate_Command (const char* line, FILE* command_write,
-                    struct LabelTable* labels, int pass, size_t* ip) 
+int Translate_Command (const char* line, FILE* command_write, struct LabelTable* labels, int pass, size_t* ip) 
 {
     char command_name[SIZE_BUF] = {};
     char argument[SIZE_BUF] = {};
@@ -256,9 +268,15 @@ int Translate_Command (const char* line, FILE* command_write,
         return 1;
     }    
 
-    sscanf (line, "%31s %31s", command_name, argument);
+    sscanf (line, "%31s %31s", command_name, argument); // обработать возможные ошибки
 
-    int op = Find_Command (command_name); 
+    unsigned int op_hash = Crc32(command_name);
+
+    //printf ("I'm here\n");
+
+    int op = commands[binary_search (op_hash, commands, SIZE_OPCODE)].opcode; // в нашей таблице каждому hash свой порядковый номер
+
+    //printf ("Find op = %d\n", op);
 
     if (op == -1)
     {
@@ -281,28 +299,15 @@ int Translate_Command (const char* line, FILE* command_write,
     return 0;
 }
 
-// crc32
-int Find_Command (char* command_name)
-{
-    for ( size_t i = 0; commands[i].name != NULL; i++)
-    {
-        if (strcmp (commands[i].name, command_name) == 0)
-        {
-            return commands[i].opcode;
-        }
-    }
-    return -1;
-}
-
 //============================================================================
 //===========================Хэширование =====================================
 //============================================================================
 
-unsigned int Crc32 (const char* s)
+unsigned int Crc32           (const char* s)
 {
     unsigned int crc = 0xFFFFFFFF;
     
-    while (*s)
+    while (*s != '\0')
     {
         crc ^= (unsigned char)*s;
         for (int i = 0; i < 8; i++)
@@ -321,21 +326,48 @@ unsigned int Crc32 (const char* s)
     return crc ^ 0xFFFFFFFF;
 }
 
-int Hash_Table_Init (struct Hash_Table* Hash)
+int          Hash_Table_Init (struct Command commands[])
 {
-    Hash->table = calloc (16, sizeof (unsigned int)); // Цифру или в константу
-    for (size_t i = 0; i <= 16; i++)
+    for (size_t i = 0; i < SIZE_OPCODE; i++)
     {
-        *(Hash->table + i) = Crc32 (commands[i].name);
+        commands[i].hash_code = Crc32 (commands[i].name);
     }
+
     return 0;
 }
 
+size_t       binary_search   (unsigned int value, struct Command commands[], size_t size_data)
+{
+    size_t i = (int)((size_data) / 2);
+
+    size_t infimum = 0;
+    size_t supremum = size_data;
+    
+    while (infimum < supremum)
+    {
+        if (commands[i].hash_code < value)
+        {
+            infimum = i;
+            i =infimum + (int)((supremum - infimum)/2);
+        }
+
+        if (commands[i].hash_code > value)
+        {
+            supremum = i;
+            i = infimum + (int)((supremum - infimum)/2);
+        }
+
+        if (commands[i].hash_code == value)
+        {
+            return i;
+        }
+    }
+}
 
 //============================================================================
 //===========================Вспомогательные функции==========================
 //============================================================================
-int ParseRegister (const char* s)
+int  ParseRegister     (const char* s)
 {
     if (strcmp (s, "AX") == 0) return 0;
     if (strcmp (s, "BX") == 0) return 1;
@@ -344,26 +376,26 @@ int ParseRegister (const char* s)
     return -1;
 }
 
-void LabelInit (struct LabelTable* t)
+void LabelInit         (struct LabelTable* t)
 {
     for (int i = 0; i < LABEL_MAX; i++)
         t->labels[i] = -1;
 }
 
-void LabelAdd (struct LabelTable* t, int label_number, size_t ip)
+void LabelAdd          (struct LabelTable* t, int label_number, size_t ip)
 {
     if (label_number < 0 || label_number >= LABEL_MAX) return;
     t->labels[label_number] = (int)ip;
 }
 
-int LabelFind (struct LabelTable* t, int label_number)
+int  LabelFind         (struct LabelTable* t, int label_number)
 {
     if (label_number < 0 || label_number >= LABEL_MAX) 
         return -1;
     return t->labels[label_number];
 }
 
-int marker (const char* line, struct LabelTable* labels, size_t* ip)
+int  marker            (const char* line, struct LabelTable* labels, size_t* ip)
 {
     if (line[0] == ':') 
     {
@@ -375,6 +407,23 @@ int marker (const char* line, struct LabelTable* labels, size_t* ip)
         }
         return 1;
     }
+    return 0;
+}
+
+int  Compare_struct_Up (const void* struct_1, const void* struct_2)
+{
+    unsigned int a = ((struct Command*)struct_1)->hash_code;
+    unsigned int b = ((struct Command*)struct_2)->hash_code;
+    if (a < b)
+    {
+        return -1;
+    }
+
+    if (a > b)
+    {
+        return 1;
+    }
+
     return 0;
 }
 
